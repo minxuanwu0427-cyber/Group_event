@@ -126,6 +126,13 @@ textarea.input { min-height: 80px; resize: vertical; }
 .two-col-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
 .two-col-grid .room-card { margin-bottom: 0; }
 
+.chip-grid { display: grid; gap: var(--space-2) var(--space-2); }
+.chip-grid.grid-3 { grid-template-columns: repeat(3, 1fr); }
+.chip-grid.grid-4 { grid-template-columns: repeat(4, 1fr); }
+.person-chip { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.person-chip .name { font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.x-remove { color: var(--color-pink-text); text-decoration: none; font-weight: 700; cursor: pointer; margin-left: 2px; }
+
 .sub-tabs { display: flex; gap: 8px; margin: 0 0 var(--space-3); }
 .sub-tabs button { flex: 1; border: none; border-radius: 999px; padding: 9px 4px; font-size: 13.5px; font-weight: 700; background: #E9EFE3; color: var(--color-text-soft); }
 .sub-tabs button.active { background: var(--color-accent-dark); color: white; }
