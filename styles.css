@@ -1,0 +1,180 @@
+/* ==========================================================================
+   揪團懶人包 — styles.css
+   設計語彙沿用旅遊規劃網站（travel-planner），色票/字體一致
+   ========================================================================== */
+:root {
+  --color-bg: oklch(98.5% 0.006 232);
+  --color-surface: oklch(95% 0.01 232);
+  --color-text: oklch(23% 0.02 240);
+  --color-accent: oklch(55% 0.11 218);
+  --color-accent-2: oklch(66% 0.1 25);
+  --color-divider: color-mix(in srgb, oklch(23% 0.02 240) 16%, transparent);
+
+  --color-neutral-100: oklch(98% 0.005 232);
+  --color-neutral-200: oklch(93% 0.008 232);
+  --color-neutral-300: oklch(84% 0.008 232);
+  --color-neutral-400: oklch(69% 0.008 232);
+  --color-neutral-500: oklch(58% 0.008 232);
+  --color-neutral-600: oklch(47% 0.008 232);
+  --color-neutral-700: oklch(36% 0.008 232);
+  --color-neutral-800: oklch(26% 0.008 232);
+  --color-neutral-900: oklch(17% 0.008 232);
+
+  --color-accent-100: oklch(96% 0.025 218);
+  --color-accent-200: oklch(91% 0.05 218);
+  --color-accent-300: oklch(82% 0.08 218);
+  --color-accent-400: oklch(67% 0.11 218);
+  --color-accent-500: oklch(55% 0.11 218);
+  --color-accent-600: oklch(46% 0.11 218);
+  --color-accent-700: oklch(37% 0.1 218);
+  --color-accent-800: oklch(27% 0.08 218);
+  --color-accent-900: oklch(18% 0.06 218);
+
+  --color-accent-2-100: oklch(96% 0.03 25);
+  --color-accent-2-200: oklch(91% 0.05 25);
+  --color-accent-2-300: oklch(84% 0.08 25);
+  --color-accent-2-400: oklch(74% 0.1 25);
+  --color-accent-2-500: oklch(66% 0.1 25);
+  --color-accent-2-600: oklch(56% 0.11 25);
+  --color-accent-2-700: oklch(46% 0.1 25);
+  --color-accent-2-800: oklch(34% 0.08 25);
+  --color-accent-2-900: oklch(22% 0.06 25);
+
+  --font-heading: "Caprasimo", system-ui, sans-serif;
+  --font-body: "Figtree", system-ui, sans-serif;
+
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px;
+  --space-5: 24px; --space-6: 32px;
+  --radius: 14px; --radius-sm: 10px; --radius-lg: 20px;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  font-family: var(--font-body);
+  background: var(--color-bg);
+  color: var(--color-text);
+  line-height: 1.5;
+  -webkit-tap-highlight-color: transparent;
+}
+#app { max-width: 640px; margin: 0 auto; padding-bottom: 88px; min-height: 100vh; }
+
+h1, h2, h3 { font-family: var(--font-heading); margin: 0; font-weight: normal; }
+h1 { font-size: 22px; } h2 { font-size: 17px; } h3 { font-size: 14px; }
+p { margin: 0; }
+
+button { font-family: inherit; cursor: pointer; }
+.btn {
+  border: none; border-radius: 999px; padding: 10px 18px; font-size: 14px;
+  background: var(--color-accent-500); color: white; font-weight: 600;
+}
+.btn.secondary { background: var(--color-neutral-200); color: var(--color-text); }
+.btn.ghost { background: transparent; color: var(--color-accent-600); padding: 6px 10px; }
+.btn.danger { background: var(--color-accent-2-500); color: white; }
+.btn:disabled { opacity: .45; cursor: default; }
+.btn.small { padding: 6px 12px; font-size: 13px; }
+
+.input, textarea.input {
+  width: 100%; border: 1px solid var(--color-divider); border-radius: var(--radius-sm);
+  padding: 8px 10px; font-size: 14px; font-family: inherit; background: white; color: var(--color-text);
+  min-height: 36px;
+}
+.input-compact { min-height: 0; padding: 4px 8px; }
+textarea.input { min-height: 80px; resize: vertical; }
+
+.card {
+  background: white; border-radius: var(--radius); padding: var(--space-4);
+  margin: var(--space-3) var(--space-4);
+}
+.card-bordered { border: 1px solid var(--color-divider); box-shadow: 0 1px 3px rgba(0,0,0,.04); }
+
+.header {
+  background: linear-gradient(160deg, var(--color-accent-600), var(--color-accent-800));
+  color: white; padding: var(--space-6) var(--space-4) var(--space-5);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+}
+.header h1 { color: white; }
+.header .meta { opacity: .9; font-size: 13px; margin-top: 4px; }
+
+.tabbar {
+  position: fixed; bottom: 0; left: 0; right: 0; background: white;
+  border-top: 1px solid var(--color-divider); display: flex; z-index: 20;
+  max-width: 640px; margin: 0 auto; padding-bottom: env(safe-area-inset-bottom);
+}
+.tabbar button {
+  flex: 1; background: none; border: none; padding: 10px 4px 8px; font-size: 11px;
+  color: var(--color-neutral-500); display: flex; flex-direction: column; align-items: center; gap: 2px;
+}
+.tabbar button.active { color: var(--color-accent-600); font-weight: 700; }
+.tabbar svg { width: 20px; height: 20px; }
+
+.section-title { font-size: 13px; color: var(--color-neutral-500); font-weight: 600; margin: 0 0 var(--space-2); }
+
+.row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.row + .row { margin-top: var(--space-2); }
+.chip {
+  display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 999px;
+  font-size: 12px; background: var(--color-accent-100); color: var(--color-accent-700); font-weight: 600;
+}
+.chip.warn { background: var(--color-accent-2-100); color: var(--color-accent-2-700); }
+.chip.neutral { background: var(--color-neutral-200); color: var(--color-neutral-600); }
+
+.avatar {
+  width: 30px; height: 30px; border-radius: 50%; background: var(--color-accent-300);
+  color: var(--color-accent-900); display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 700; flex-shrink: 0;
+}
+.avatar.small { width: 22px; height: 22px; font-size: 11px; }
+
+.divider { height: 1px; background: var(--color-divider); margin: var(--space-3) 0; }
+
+.progress-bar { height: 6px; background: var(--color-neutral-200); border-radius: 999px; overflow: hidden; }
+.progress-bar > div { height: 100%; background: var(--color-accent-500); }
+
+.person-line { display: flex; align-items: center; gap: var(--space-2); padding: 6px 0; }
+.person-line .name { flex: 1; font-size: 14px; }
+
+.room-card { border: 1px solid var(--color-divider); border-radius: var(--radius-sm); padding: var(--space-3); margin-bottom: var(--space-3); }
+.room-card.full { border-color: var(--color-accent-400); background: var(--color-accent-100); }
+
+.fab {
+  position: fixed; right: 20px; bottom: 90px; width: 52px; height: 52px; border-radius: 50%;
+  background: var(--color-accent-500); color: white; display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 4px 14px rgba(0,0,0,.2); border: none; z-index: 15;
+}
+
+.modal-backdrop {
+  position: fixed; inset: 0; background: rgba(0,0,0,.4); display: flex; align-items: flex-end;
+  justify-content: center; z-index: 30;
+}
+.modal-sheet {
+  background: white; width: 100%; max-width: 640px; border-radius: 20px 20px 0 0;
+  padding: var(--space-5) var(--space-4) calc(var(--space-5) + env(safe-area-inset-bottom));
+  max-height: 85vh; overflow-y: auto;
+}
+.modal-sheet h2 { margin-bottom: var(--space-4); }
+
+.form-field { margin-bottom: var(--space-3); }
+.form-field label { display: block; font-size: 12.5px; color: var(--color-neutral-600); margin-bottom: 4px; font-weight: 600; }
+
+.checkmark-grid { display: grid; grid-template-columns: 1fr; }
+.matrix-wrap { overflow-x: auto; }
+.matrix { border-collapse: collapse; font-size: 12.5px; min-width: 100%; }
+.matrix th, .matrix td { padding: 6px 8px; text-align: center; border-bottom: 1px solid var(--color-divider); white-space: nowrap; }
+.matrix th.name-col, .matrix td.name-col { text-align: left; position: sticky; left: 0; background: white; }
+.matrix .yes { color: var(--color-accent-600); font-weight: 700; }
+.matrix .no { color: var(--color-neutral-300); }
+
+.balance-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--color-divider); font-size: 14px; }
+.balance-row:last-child { border-bottom: none; }
+.balance-row .amt.pos { color: var(--color-accent-600); font-weight: 700; }
+.balance-row .amt.neg { color: var(--color-accent-2-600); font-weight: 700; }
+
+.identity-screen { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: var(--space-5); text-align: center; }
+.identity-screen .btn { margin: 6px 0; width: 100%; max-width: 320px; }
+
+.empty-hint { color: var(--color-neutral-400); font-size: 13px; text-align: center; padding: var(--space-4) 0; }
+
+@media (min-width: 641px) {
+  #app { border-left: 1px solid var(--color-divider); border-right: 1px solid var(--color-divider); }
+}
