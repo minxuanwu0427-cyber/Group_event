@@ -123,6 +123,9 @@ textarea.input { min-height: 80px; resize: vertical; }
 .room-card { background: #F4F7F1; border-radius: var(--radius-sm); padding: var(--space-3); margin-bottom: var(--space-3); }
 .room-card.full { background: var(--color-cream); }
 
+.two-col-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
+.two-col-grid .room-card { margin-bottom: 0; }
+
 .sub-tabs { display: flex; gap: 8px; margin: 0 0 var(--space-3); }
 .sub-tabs button { flex: 1; border: none; border-radius: 999px; padding: 9px 4px; font-size: 13.5px; font-weight: 700; background: #E9EFE3; color: var(--color-text-soft); }
 .sub-tabs button.active { background: var(--color-accent-dark); color: white; }
