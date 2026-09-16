@@ -31,7 +31,7 @@ const state = {
   eventCode: localStorage.getItem(CODE_KEY) || null,
   event: undefined,       // undefined=載入中 / null=此代號尚未建立 / object=正常資料
   currentUserId: null,
-  ui: { tab: "overview", expenseModal: false, infoEditId: null, rosterOpen: false, roomsSubTab: "room", viewMode: false }
+  ui: { tab: "overview", expenseModal: false, infoEditId: null, rosterOpen: false, roomsSubTab: "room", viewMode: false, arrivalModalFor: null, arrivalMethodTemp: null }
 };
 
 function uid() { return "id_" + Math.random().toString(36).slice(2, 10); }
@@ -214,14 +214,22 @@ function renderOverview() {
 
   html += '<div class="section-title">我的分配</div>';
   html += '<div class="stat-grid">';
-  html += statTile("t-cream", "🛏️", myRoom ? myRoom.name : "未分房", "我的房間", "rooms", "room");
-  html += statTile("t-blue", "🚗", myVehicle ? myVehicle.name : "未分配", "我的座車", "rooms", "vehicle");
-  html += '</div>';
-
-  html += '<div class="card card-bordered">';
-  html += '<h2 style="margin-bottom:8px;">📋 我的工作項目</h2>';
-  if (!myTasks.length) html += '<p class="empty-hint">目前沒有分配到工作項目</p>';
-  myTasks.forEach(it => { html += '<p style="font-size:14px;padding:4px 0;">・' + esc(it.label) + '</p>'; });
+  html += statTile("t-cream", "🛏️", myRoom ? myRoom.name : "未分房", "住哪房", "rooms", "room");
+  html += statTile("t-blue", "🚗", myVehicle ? myVehicle.name : "未分配", "怎麼行動", "rooms", "vehicle");
+  let taskValue;
+  if (!myTasks.length) taskValue = "未分配";
+  else if (myTasks.length === 1) taskValue = myTasks[0].label;
+  else taskValue = myTasks.length + " 項工作";
+  html += statTile("t-mint", "📋", taskValue, "要幫忙什麼", "prep");
+  const balances = computeBalances();
+  const settlements = computeSettlements(balances);
+  const myPay = settlements.filter(s => s.from === state.currentUserId);
+  const myReceive = settlements.filter(s => s.to === state.currentUserId);
+  let feeValue;
+  if (myPay.length) feeValue = myPay.map(s => "付" + personName(s.to) + " $" + fmtMoney(s.amount)).join("、");
+  else if (myReceive.length) feeValue = myReceive.map(s => "收" + personName(s.from) + " $" + fmtMoney(s.amount)).join("、");
+  else feeValue = "已結清";
+  html += statTile("t-pink", "💰", feeValue, "目前費用", "expense");
   html += '</div>';
 
   html += '<p style="text-align:center;margin-top:16px;"><button class="btn ghost small" data-act="switchIdentity">不是你？切換身分</button></p>';
@@ -248,6 +256,7 @@ function renderRoomsTab() {
     html += '<div class="card card-bordered">';
     html += '<div class="row"><h2>房間分配</h2>' + (org ? '<button class="btn ghost small" data-act="addRoom">＋新增房間</button>' : '') + '</div>';
     if (e.rooms.length === 0) html += '<p class="empty-hint">尚未建立房間</p>';
+    html += '<div class="two-col-grid">';
     e.rooms.forEach(r => {
       const members = e.people.filter(p => e.roomAssignments[p.id] === r.id);
       const full = r.capacity && members.length >= r.capacity;
@@ -266,6 +275,7 @@ function renderRoomsTab() {
       }
       html += '</div>';
     });
+    html += '</div>';
     html += '</div>';
 
     const unassigned = e.people.filter(p => !e.roomAssignments[p.id]);
@@ -291,6 +301,7 @@ function renderRoomsTab() {
     html += '<div class="card card-bordered">';
     html += '<div class="row"><h2>座車分配</h2>' + (org ? '<button class="btn ghost small" data-act="addVehicle">＋新增座車</button>' : '') + '</div>';
     if (e.vehicles.length === 0) html += '<p class="empty-hint">尚未建立座車</p>';
+    html += '<div class="two-col-grid">';
     e.vehicles.forEach(v => {
       const members = e.people.filter(p => e.vehicleAssignments[p.id] === v.id);
       const full = v.capacity && members.length >= v.capacity;
@@ -309,6 +320,7 @@ function renderRoomsTab() {
       }
       html += '</div>';
     });
+    html += '</div>';
     html += '</div>';
 
     const unassignedV = e.people.filter(p => !e.vehicleAssignments[p.id]);
@@ -334,6 +346,7 @@ function renderRoomsTab() {
 }
 
 /* -------------------------------- 交通（併入座車內容） -------------------------------- */
+const ARRIVAL_PRESETS = ["台鐵", "高鐵", "開車", "其他"];
 function renderTransportSection() {
   const e = state.event;
   let html = '<div class="card card-bordered">';
@@ -341,20 +354,34 @@ function renderTransportSection() {
   e.people.forEach(p => {
     const a = e.arrivals[p.id] || {};
     const editable = canEditPerson(p.id);
-    html += '<div style="padding:8px 0;border-bottom:1px solid var(--color-divider);">';
-    html += '<div class="person-line" style="padding:0 0 6px;"><div class="avatar small">' + avatarText(p) + '</div><span class="name">' + esc(p.name) + '</span></div>';
-    if (editable) {
-      html += '<div class="row" style="gap:8px;">';
-      html += '<input class="input input-compact" style="flex:1;" placeholder="交通方式（例如：台鐵）" data-act="editArrivalMethod" data-id="' + p.id + '" value="' + esc(a.method || "") + '">';
-      html += '<input class="input input-compact" style="flex:1;" placeholder="預計時間（例如：12:53）" data-act="editArrivalEta" data-id="' + p.id + '" value="' + esc(a.eta || "") + '">';
-      html += '</div>';
-    } else {
-      html += '<p style="font-size:13px;color:var(--color-text-soft);">' + (a.method || a.eta ? esc(a.method || "") + ' ・ ' + esc(a.eta || "") : "尚未填寫") + '</p>';
-    }
+    const summary = (a.method || a.eta) ? esc(a.method || "") + (a.eta ? "・" + esc(a.eta) : "") : "尚未填寫";
+    html += '<div class="row" ' + (editable ? 'data-act="openArrivalModal" data-id="' + p.id + '" style="cursor:pointer;"' : '') + ' style="padding:8px 0;border-bottom:1px solid var(--color-divider);">';
+    html += '<div class="person-line" style="padding:0;"><div class="avatar small">' + avatarText(p) + '</div><span class="name">' + esc(p.name) + '</span></div>';
+    html += '<span class="' + (a.method || a.eta ? "" : "empty-hint") + '" style="font-size:13px;padding:0;">' + summary + '</span>';
     html += '</div>';
   });
   if (!e.people.length) html += '<p class="empty-hint">尚無團員</p>';
   html += '</div>';
+  return html;
+}
+function renderArrivalModal() {
+  const pid = state.ui.arrivalModalFor;
+  const p = state.event.people.find(x => x.id === pid);
+  if (!p) return "";
+  const a = state.event.arrivals[pid] || {};
+  const isPreset = ARRIVAL_PRESETS.slice(0, 3).includes(a.method);
+  const currentMethod = state.ui.arrivalMethodTemp || (isPreset ? a.method : (a.method ? "其他" : "台鐵"));
+  let html = '<div class="modal-backdrop"><div class="modal-sheet">';
+  html += '<h2>抵達方式・' + esc(p.name) + '</h2>';
+  html += '<div class="form-field"><label>交通方式</label><select class="input" id="arrivalMethodSelect" data-act="arrivalMethodChange">';
+  ARRIVAL_PRESETS.forEach(m => { html += '<option value="' + m + '"' + (currentMethod === m ? " selected" : "") + '>' + m + '</option>'; });
+  html += '</select></div>';
+  if (currentMethod === "其他") {
+    html += '<div class="form-field"><label>請輸入交通方式</label><input class="input" id="arrivalMethodOther" value="' + esc(isPreset ? "" : (a.method || "")) + '"></div>';
+  }
+  html += '<div class="form-field"><label>預計抵達時間</label><input class="input" type="time" id="arrivalTimeInput" value="' + esc(a.eta || "") + '"></div>';
+  html += '<button class="btn" style="width:100%;" data-act="submitArrival" data-id="' + pid + '">儲存</button>';
+  html += '</div></div>';
   return html;
 }
 
@@ -367,18 +394,17 @@ function renderPrepTab() {
   if (!e.prepItems.length) html += '<p class="empty-hint">尚未安排工作項目</p>';
   e.prepItems.forEach(it => {
     const assignee = e.people.find(p => p.id === it.assigneeId);
-    html += '<div class="person-line" style="align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--color-divider);">';
-    html += '<div style="flex:1;">';
-    html += '<div style="font-size:14px;font-weight:600;">' + esc(it.label) + '</div>';
+    html += '<div class="person-line" style="padding:8px 0;border-bottom:1px solid var(--color-divider);">';
+    html += '<div class="avatar small">' + (assignee ? avatarText(assignee) : "？") + '</div>';
+    html += '<span class="name" style="flex:1;">' + esc(it.label) + '</span>';
     if (org) {
-      html += '<select class="input input-compact" style="margin-top:6px;width:auto;" data-act="assignPrepTask" data-id="' + it.id + '"><option value="">尚未分配</option>';
+      html += '<select class="input input-compact" style="width:auto;" data-act="assignPrepTask" data-id="' + it.id + '"><option value="">尚未分配</option>';
       e.people.forEach(p => { html += '<option value="' + p.id + '"' + (it.assigneeId === p.id ? " selected" : "") + '>' + esc(p.name) + '</option>'; });
       html += '</select>';
+      html += '<button class="btn ghost small" data-act="deletePrepTask" data-id="' + it.id + '">刪除</button>';
     } else {
-      html += '<div style="font-size:12.5px;color:var(--color-text-soft);margin-top:2px;">負責人：' + (assignee ? esc(assignee.name) : "尚未分配") + '</div>';
+      html += '<span class="empty-hint" style="padding:0;">' + (assignee ? esc(assignee.name) : "尚未分配") + '</span>';
     }
-    html += '</div>';
-    if (org) html += '<button class="btn ghost small" data-act="deletePrepTask" data-id="' + it.id + '">刪除</button>';
     html += '</div>';
   });
   html += '</div>';
@@ -554,13 +580,14 @@ function render() {
   if (state.ui.tab === "expense") html += '<button class="fab" data-act="openExpenseModal">＋</button>';
   html += renderTabbar();
   if (state.ui.expenseModal) html += renderExpenseModal();
+  if (state.ui.arrivalModalFor) html += renderArrivalModal();
   app.innerHTML = html;
 }
 
 /* -------------------------------- 事件委派 -------------------------------- */
 document.addEventListener("click", e => {
   if (e.target.classList && e.target.classList.contains("modal-backdrop")) {
-    state.ui.expenseModal = false; render(); return;
+    state.ui.expenseModal = false; state.ui.arrivalModalFor = null; state.ui.arrivalMethodTemp = null; render(); return;
   }
   const el = e.target.closest("[data-act]");
   if (!el) return;
@@ -693,6 +720,15 @@ document.addEventListener("click", e => {
     state.ui.expenseModal = false; render();
   } else if (act === "deleteExpense") {
     mutate(ev => { ev.expenses = ev.expenses.filter(x => x.id !== id); });
+  } else if (act === "openArrivalModal") {
+    state.ui.arrivalModalFor = id; state.ui.arrivalMethodTemp = null; render();
+  } else if (act === "submitArrival") {
+    const methodSel = document.getElementById("arrivalMethodSelect").value;
+    const otherInput = document.getElementById("arrivalMethodOther");
+    const method = methodSel === "其他" ? (otherInput ? otherInput.value.trim() : "") : methodSel;
+    const eta = document.getElementById("arrivalTimeInput").value;
+    mutate(ev => { ev.arrivals[id] = { method, eta }; });
+    state.ui.arrivalModalFor = null; state.ui.arrivalMethodTemp = null; render();
   }
 });
 
@@ -709,6 +745,8 @@ document.addEventListener("change", e => {
   } else if (act === "assignPrepTask") {
     const assigneeId = el.value;
     mutate(ev => { const it = ev.prepItems.find(x => x.id === id); if (it) it.assigneeId = assigneeId; });
+  } else if (act === "arrivalMethodChange") {
+    state.ui.arrivalMethodTemp = el.value; render();
   }
 });
 
@@ -720,10 +758,6 @@ document.addEventListener("blur", e => {
     mutate(ev => { ev.infoBlocks.find(x => x.id === id).title = el.value; });
   } else if (act === "editInfoContent") {
     mutate(ev => { ev.infoBlocks.find(x => x.id === id).content = el.value; });
-  } else if (act === "editArrivalMethod") {
-    mutate(ev => { ev.arrivals[id] = Object.assign({}, ev.arrivals[id], { method: el.value }); });
-  } else if (act === "editArrivalEta") {
-    mutate(ev => { ev.arrivals[id] = Object.assign({}, ev.arrivals[id], { eta: el.value }); });
   }
 }, true);
 
