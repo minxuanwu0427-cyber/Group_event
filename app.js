@@ -55,12 +55,13 @@ function personName(id) {
 function canEditPerson(pid) { return isOrganizer() || pid === state.currentUserId; }
 
 function formatTripDates(td) {
+  const gap = "\u00A0\u00A0\u00A0"; // 用不換行空白隔開日期跟天數說明，較易讀
   if (!td || !td.start) return "尚未設定日期";
-  if (!td.end || td.end === td.start) return td.start + "・當天來回";
+  if (!td.end || td.end === td.start) return td.start + gap + "當天來回";
   const d1 = new Date(td.start), d2 = new Date(td.end);
   const diff = Math.round((d2 - d1) / 86400000);
   if (isNaN(diff) || diff <= 0) return td.start + " → " + td.end;
-  return td.start + " → " + td.end + "・" + diff + "夜" + (diff + 1) + "天";
+  return td.start + " → " + td.end + gap + (diff + 1) + "天" + diff + "夜";
 }
 
 /* -------------------------------- Firestore -------------------------------- */
@@ -192,24 +193,37 @@ function renderOverview() {
   if (state.ui.rosterOpen) {
     html += '<div class="roster-grid">';
     e.people.forEach(p => {
-      html += '<div class="roster-item"><div class="avatar small">' + avatarText(p) + '</div><span class="name">' + esc(p.name) + (p.isOrganizer ? ' 👑' : '') + '</span></div>';
+      html += '<div class="roster-item"><div class="avatar small">' + avatarText(p) + '</div><span class="name">' + esc(p.name) + (p.isOrganizer ? ' 🙋🏻\u200d♂️' : '') + '</span></div>';
     });
     html += '</div>';
+    if (isOrganizer()) {
+      html += '<div class="divider"></div>';
+      html += '<div class="row"><span class="section-title" style="margin:0;">團員管理</span><button class="btn ghost small" data-act="addPersonPrompt">＋新增團員</button></div>';
+      e.people.forEach(p => {
+        html += '<div class="person-line"><div class="avatar small">' + avatarText(p) + '</div><span class="name">' + esc(p.name) + (p.nickname ? '（' + esc(p.nickname) + '）' : '') + (p.isOrganizer ? ' 🙋🏻\u200d♂️主揪' : '') + '</span>';
+        html += '<button class="btn ghost small" data-act="editPerson" data-id="' + p.id + '">編輯</button>';
+        if (p.id !== state.currentUserId) {
+          html += '<button class="btn ghost small" data-act="toggleOrganizer" data-id="' + p.id + '">' + (p.isOrganizer ? '取消主揪' : '設為主揪') + '</button>';
+          html += '<button class="btn ghost small" data-act="removePerson" data-id="' + p.id + '">移除</button>';
+        }
+        html += '</div>';
+      });
+    }
   }
   html += '</div>';
 
   html += '<div class="section-title">我的分配</div>';
   html += '<div class="stat-grid">';
-  html += statTile("t-cream", "🛏️", myRoom ? myRoom.name : "未分房", "我的房間", "rooms");
-  html += statTile("t-blue", "🚗", myVehicle ? myVehicle.name : "未分配", "我的座車", "rooms");
+  html += statTile("t-cream", "🛏️", myRoom ? myRoom.name : "未分房", "我的房間", "rooms", "room");
+  html += statTile("t-blue", "🚗", myVehicle ? myVehicle.name : "未分配", "我的座車", "rooms", "vehicle");
   html += statTile("t-mint", "✅", myDone + "/" + e.prepItems.length, "行前準備", "prep");
   html += '</div>';
 
   html += '<p style="text-align:center;margin-top:16px;"><button class="btn ghost small" data-act="switchIdentity">不是你？切換身分</button></p>';
   return html;
 }
-function statTile(cls, icon, value, label, tab) {
-  return '<div class="stat-tile ' + cls + '" data-act="goTab" data-tab="' + tab + '">' +
+function statTile(cls, icon, value, label, tab, subTab) {
+  return '<div class="stat-tile ' + cls + '" data-act="goTab" data-tab="' + tab + '"' + (subTab ? ' data-sub="' + subTab + '"' : '') + '>' +
     '<span class="stat-icon">' + icon + '</span>' +
     '<div><div class="stat-value" style="font-size:17px;">' + esc(value) + '</div><div class="stat-label">' + esc(label) + '</div></div>' +
     '</div>';
@@ -251,10 +265,10 @@ function renderRoomsTab() {
 
     const unassigned = e.people.filter(p => !e.roomAssignments[p.id]);
     html += '<div class="card card-bordered">';
-    html += '<h2 style="margin-bottom:8px;">未分房（' + unassigned.length + '）</h2>';
+    html += '<h2 style="margin-bottom:8px;">未分房（' + unassigned.length + '/' + e.people.length + '）</h2>';
     if (!unassigned.length) html += '<p class="empty-hint">大家都分好房間了</p>';
     unassigned.forEach(p => {
-      html += '<div class="person-line"><div class="avatar small">' + avatarText(p) + '</div><span class="name">' + esc(p.name) + (p.isOrganizer ? ' 👑' : '') + '</span>';
+      html += '<div class="person-line"><div class="avatar small">' + avatarText(p) + '</div><span class="name">' + esc(p.name) + (p.isOrganizer ? ' 🙋🏻\u200d♂️' : '') + '</span>';
       if (canEditPerson(p.id) && e.rooms.length) {
         html += '<select class="input input-compact" style="width:auto;" data-act="assignRoom" data-id="' + p.id + '">';
         html += '<option value="">選房間</option>';
@@ -267,6 +281,8 @@ function renderRoomsTab() {
     });
     html += '</div>';
   } else {
+    html += renderTransportSection();
+
     html += '<div class="card card-bordered">';
     html += '<div class="row"><h2>座車分配</h2>' + (org ? '<button class="btn ghost small" data-act="addVehicle">＋新增座車</button>' : '') + '</div>';
     if (e.vehicles.length === 0) html += '<p class="empty-hint">尚未建立座車</p>';
@@ -292,7 +308,7 @@ function renderRoomsTab() {
 
     const unassignedV = e.people.filter(p => !e.vehicleAssignments[p.id]);
     html += '<div class="card card-bordered">';
-    html += '<h2 style="margin-bottom:8px;">未分配座車（' + unassignedV.length + '）</h2>';
+    html += '<h2 style="margin-bottom:8px;">未分配座車（' + unassignedV.length + '/' + e.people.length + '）</h2>';
     if (!unassignedV.length) html += '<p class="empty-hint">大家都分好座車了</p>';
     unassignedV.forEach(p => {
       html += '<div class="person-line"><div class="avatar small">' + avatarText(p) + '</div><span class="name">' + esc(p.name) + '</span>';
@@ -309,34 +325,12 @@ function renderRoomsTab() {
     html += '</div>';
   }
 
-  html += renderRosterManageCard();
   return html;
 }
 
-function renderRosterManageCard() {
-  const e = state.event, org = isOrganizer();
-  let html = '<div class="card card-bordered">';
-  html += '<div class="row"><h2>團員管理（' + e.people.length + '）</h2>' + (org ? '<button class="btn ghost small" data-act="addPersonPrompt">＋新增團員</button>' : '') + '</div>';
-  if (!org) html += '<p class="empty-hint">團員名單由主揪管理</p>';
-  e.people.forEach(p => {
-    html += '<div class="person-line"><div class="avatar small">' + avatarText(p) + '</div><span class="name">' + esc(p.name) + (p.nickname ? '（' + esc(p.nickname) + '）' : '') + (p.isOrganizer ? ' 👑主揪' : '') + '</span>';
-    if (org) {
-      html += '<button class="btn ghost small" data-act="editPerson" data-id="' + p.id + '">編輯</button>';
-      if (p.id !== state.currentUserId) {
-        html += '<button class="btn ghost small" data-act="toggleOrganizer" data-id="' + p.id + '">' + (p.isOrganizer ? '取消主揪' : '設為主揪') + '</button>';
-        html += '<button class="btn ghost small" data-act="removePerson" data-id="' + p.id + '">移除</button>';
-      }
-    }
-    html += '</div>';
-  });
-  html += '</div>';
-  return html;
-}
-
-/* -------------------------------- 交通 -------------------------------- */
-function renderTransportTab() {
+/* -------------------------------- 交通（併入座車內容） -------------------------------- */
+function renderTransportSection() {
   const e = state.event;
-
   let html = '<div class="card card-bordered">';
   html += '<h2 style="margin-bottom:8px;">抵達方式與時間</h2>';
   e.people.forEach(p => {
@@ -525,7 +519,6 @@ function renderExpenseModal() {
 const TAB_ICONS = {
   overview: '<path d="M3 10.5 12 3l9 7.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 9.5V21h14V9.5" stroke-linecap="round" stroke-linejoin="round"/>',
   rooms: '<path d="M3 18v-6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v6" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 18h18" stroke-linecap="round"/><path d="M7 10V7a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v3" stroke-linecap="round" stroke-linejoin="round"/>',
-  transport: '<path d="M5 11l1.5-4.5A2 2 0 0 1 8.4 5h7.2a2 2 0 0 1 1.9 1.5L19 11" stroke-linecap="round" stroke-linejoin="round"/><rect x="3" y="11" width="18" height="6" rx="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="7.5" cy="17.5" r="1.3"/><circle cx="16.5" cy="17.5" r="1.3"/>',
   prep: '<rect x="3" y="3" width="18" height="18" rx="4"/><path d="m8 12 3 3 5-6" stroke-linecap="round" stroke-linejoin="round"/>',
   info: '<rect x="3" y="4" width="18" height="17" rx="3"/><path d="M16 2v4M8 2v4M3 9h18" stroke-linecap="round"/>',
   expense: '<path d="M3 7a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" stroke-linecap="round" stroke-linejoin="round"/><path d="M16 12h2" stroke-linecap="round"/>'
@@ -533,7 +526,6 @@ const TAB_ICONS = {
 const TABS = [
   { id: "overview", label: "總覽" },
   { id: "rooms", label: "分房" },
-  { id: "transport", label: "交通" },
   { id: "prep", label: "準備" },
   { id: "info", label: "行程" },
   { id: "expense", label: "記帳" }
@@ -558,7 +550,6 @@ function render() {
   let body = "";
   if (state.ui.tab === "overview") body = renderOverview();
   else if (state.ui.tab === "rooms") body = renderRoomsTab();
-  else if (state.ui.tab === "transport") body = renderTransportTab();
   else if (state.ui.tab === "prep") body = renderPrepTab();
   else if (state.ui.tab === "info") body = renderInfoTab();
   else if (state.ui.tab === "expense") body = renderExpenseTab();
@@ -605,7 +596,9 @@ document.addEventListener("click", e => {
   } else if (act === "switchIdentity") {
     switchIdentity();
   } else if (act === "goTab") {
-    state.ui.tab = el.dataset.tab; render();
+    state.ui.tab = el.dataset.tab;
+    if (el.dataset.sub) state.ui.roomsSubTab = el.dataset.sub;
+    render();
   } else if (act === "toggleRoster") {
     state.ui.rosterOpen = !state.ui.rosterOpen; render();
   } else if (act === "editTitle") {
