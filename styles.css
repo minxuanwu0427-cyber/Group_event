@@ -2,23 +2,23 @@
    揪團懶人包 — styles.css (v2 視覺重新設計，參考柔和馬卡龍色調 app 風格)
    ========================================================================== */
 :root {
-  --color-bg: #EEF3F6;
+  --color-bg: #F2F6ED;
   --color-surface: #ffffff;
-  --color-text: #1E2530;
-  --color-text-soft: #6B7280;
-  --color-divider: #E7EBEF;
+  --color-text: #1F2E22;
+  --color-text-soft: #6B7A6E;
+  --color-divider: #E5EBE1;
 
-  --color-cream: #F8ECD1;
-  --color-cream-text: #8A6D2E;
-  --color-blue: #DCEAF7;
-  --color-blue-text: #3E6E96;
-  --color-pink: #F6DEDE;
-  --color-pink-text: #B15757;
-  --color-mint: #DEEFE6;
-  --color-mint-text: #3E8A6C;
+  --color-cream: #F0ECD8;
+  --color-cream-text: #8A7A3E;
+  --color-blue: #DCEEE6;
+  --color-blue-text: #2E7D68;
+  --color-pink: #E7EFD8;
+  --color-pink-text: #5C6B3E;
+  --color-mint: #D3E6D6;
+  --color-mint-text: #2F5C3E;
 
-  --color-accent: #4F8FC4;
-  --color-accent-dark: #1E2530;
+  --color-accent: #3E7A52;
+  --color-accent-dark: #1F3A2E;
 
   --font-heading: "Fraunces", Georgia, serif;
   --font-body: "Figtree", system-ui, sans-serif;
@@ -100,7 +100,7 @@ textarea.input { min-height: 80px; resize: vertical; }
   font-size: 12px; background: var(--color-blue); color: var(--color-blue-text); font-weight: 700;
 }
 .chip.warn { background: var(--color-pink); color: var(--color-pink-text); }
-.chip.neutral { background: #EFF1F4; color: var(--color-text-soft); }
+.chip.neutral { background: #E9EFE3; color: var(--color-text-soft); }
 
 .avatar {
   width: 30px; height: 30px; border-radius: 50%; background: var(--color-blue);
@@ -114,7 +114,7 @@ textarea.input { min-height: 80px; resize: vertical; }
 .person-line { display: flex; align-items: center; gap: var(--space-2); padding: 7px 0; }
 .person-line .name { flex: 1; font-size: 14px; }
 
-.room-card { background: #F7F9FA; border-radius: var(--radius-sm); padding: var(--space-3); margin-bottom: var(--space-3); }
+.room-card { background: #F4F7F1; border-radius: var(--radius-sm); padding: var(--space-3); margin-bottom: var(--space-3); }
 .room-card.full { background: var(--color-cream); }
 
 .fab {
@@ -143,7 +143,7 @@ textarea.input { min-height: 80px; resize: vertical; }
 .matrix th, .matrix td { padding: 7px 8px; text-align: center; border-bottom: 1px solid var(--color-divider); white-space: nowrap; }
 .matrix th.name-col, .matrix td.name-col { text-align: left; position: sticky; left: 0; background: white; }
 .matrix .yes { color: var(--color-mint-text); font-weight: 700; }
-.matrix .no { color: #D5D9DE; }
+.matrix .no { color: #CBD6C9; }
 
 .balance-row { display: flex; justify-content: space-between; padding: 9px 0; border-bottom: 1px solid var(--color-divider); font-size: 14px; }
 .balance-row:last-child { border-bottom: none; }
@@ -153,7 +153,7 @@ textarea.input { min-height: 80px; resize: vertical; }
 .identity-screen { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: var(--space-5); text-align: center; }
 .identity-screen .btn { margin: 6px 0; width: 100%; max-width: 320px; }
 
-.empty-hint { color: #9CA3AF; font-size: 13px; text-align: center; padding: var(--space-4) 0; }
+.empty-hint { color: #8B9A8D; font-size: 13px; text-align: center; padding: var(--space-4) 0; }
 
 /* -------- 底部懸浮膠囊導覽列（仿參考圖黑色 pill） -------- */
 .tabbar {
