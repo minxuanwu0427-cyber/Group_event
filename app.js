@@ -1,43 +1,51 @@
 /* ==========================================================================
-   揪團懶人包 app.js
-   單頁式 vanilla JS + Firestore，架構參考 travel-planner 專案
+   揪團懶人包 app.js (v3)
+   - 用「代號」區分不同揪團，一台裝置可記住多組代號各自的身分
+   - 人員完全由主揪管理（新增/命名/簡稱），一般人只能「選你是誰」
+   - 新增交通分頁（抵達方式/時間 + 座車分配）
+   - 總覽改版：日期、可收折名單、彩色卡片（房間/座車/行前準備）
    ========================================================================== */
 
-const EVENT_ID = "default";           // 目前只支援單一活動；之後要多團可比照舊站做切換機制
-const COLLECTION = "groupEvents";     // 跟舊站的 trips collection 分開，避免資料互相污染
-const IDENTITY_KEY = "groupEvent_identity_" + EVENT_ID;
+const COLLECTION = "groupEvents";
+const CODE_KEY = "groupEvent_code";
 
 const DEFAULT_EVENT = {
   title: "揪團出遊",
+  tripDates: { start: "", end: "" },
   meetup: { date: "", time: "", location: "", note: "" },
-  people: [],           // {id, name, isOrganizer}
-  rooms: [],             // {id, name, capacity}
-  roomAssignments: {},   // personId -> roomId
+  people: [],            // {id, name, nickname, isOrganizer}
+  rooms: [],              // {id, name, capacity}
+  roomAssignments: {},    // personId -> roomId
+  vehicles: [],           // {id, name, capacity}
+  vehicleAssignments: {}, // personId -> vehicleId
+  arrivals: {},           // personId -> { method, eta }
   prepItems: [
     { id: "p1", label: "確認護照效期 / 證件" },
     { id: "p2", label: "旅平險投保" },
     { id: "p3", label: "個人藥品準備" }
   ],
-  prepChecks: {},        // personId -> { itemId: true }
+  prepChecks: {},         // personId -> { itemId: true }
   infoBlocks: [
     { id: "i1", title: "住宿注意事項", content: "" },
     { id: "i2", title: "行程重點", content: "" }
   ],
-  expenses: []           // {id, payerId, amount, note, splitAmong:[personId], createdAt}
+  expenses: []            // {id, payerId, amount, note, splitAmong:[personId], createdAt}
 };
 
 const state = {
-  event: null,
-  currentUserId: localStorage.getItem(IDENTITY_KEY) || null,
-  ui: { tab: "overview", prepView: "self", expenseModal: false, roomModal: false, infoEditId: null }
+  eventCode: localStorage.getItem(CODE_KEY) || null,
+  event: undefined,       // undefined=載入中 / null=此代號尚未建立 / object=正常資料
+  currentUserId: null,
+  ui: { tab: "overview", prepView: "self", expenseModal: false, infoEditId: null, rosterOpen: false }
 };
 
 function uid() { return "id_" + Math.random().toString(36).slice(2, 10); }
 function esc(s) {
   return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
-function initials(name) { return esc((name || "?").trim().slice(0, 1).toUpperCase()); }
+function avatarText(p) { return esc(((p && (p.nickname || p.name)) || "?").trim().slice(0, 2)); }
 function fmtMoney(n) { return Math.round(n).toLocaleString("zh-Hant"); }
+function identityKey() { return "groupEvent_identity_" + state.eventCode; }
 
 function me() {
   if (!state.event || !state.currentUserId) return null;
@@ -48,81 +56,117 @@ function personName(id) {
   const p = state.event && state.event.people.find(x => x.id === id);
   return p ? p.name : "（已移除）";
 }
+function canEditPerson(pid) { return isOrganizer() || pid === state.currentUserId; }
+
+function formatTripDates(td) {
+  if (!td || !td.start) return "尚未設定日期";
+  if (!td.end || td.end === td.start) return td.start + "・當天來回";
+  const d1 = new Date(td.start), d2 = new Date(td.end);
+  const diff = Math.round((d2 - d1) / 86400000);
+  if (isNaN(diff) || diff <= 0) return td.start + " → " + td.end;
+  return td.start + " → " + td.end + "・" + diff + "夜" + (diff + 1) + "天";
+}
 
 /* -------------------------------- Firestore -------------------------------- */
 let unsub = null;
 async function boot() {
   await window.authReady;
-  const ref = db.collection(COLLECTION).doc(EVENT_ID);
+  if (state.eventCode) subscribe(state.eventCode);
+  else render();
+}
+function subscribe(code) {
+  if (unsub) { unsub(); unsub = null; }
+  state.eventCode = code;
+  state.event = undefined;
+  const ref = db.collection(COLLECTION).doc(code);
   unsub = ref.onSnapshot(snap => {
-    if (!snap.exists) {
-      ref.set(DEFAULT_EVENT).catch(err => console.error("初始化失敗", err));
-      state.event = JSON.parse(JSON.stringify(DEFAULT_EVENT));
-    } else {
-      state.event = normalizeEvent(snap.data());
-    }
+    state.event = snap.exists ? normalizeEvent(snap.data()) : null;
+    if (state.event) state.currentUserId = localStorage.getItem(identityKey()) || null;
     render();
   }, err => {
     console.error("Firestore 讀取失敗", err);
     document.getElementById("app").innerHTML = '<div class="empty-hint">連線失敗，請檢查網路後重新整理</div>';
   });
 }
-
 function normalizeEvent(data) {
   const e = Object.assign({}, DEFAULT_EVENT, data);
+  e.tripDates = Object.assign({}, DEFAULT_EVENT.tripDates, data.tripDates || {});
   e.meetup = Object.assign({}, DEFAULT_EVENT.meetup, data.meetup || {});
   e.people = Array.isArray(data.people) ? data.people : [];
   e.rooms = Array.isArray(data.rooms) ? data.rooms : [];
   e.roomAssignments = data.roomAssignments || {};
+  e.vehicles = Array.isArray(data.vehicles) ? data.vehicles : [];
+  e.vehicleAssignments = data.vehicleAssignments || {};
+  e.arrivals = data.arrivals || {};
   e.prepItems = Array.isArray(data.prepItems) ? data.prepItems : DEFAULT_EVENT.prepItems;
   e.prepChecks = data.prepChecks || {};
   e.infoBlocks = Array.isArray(data.infoBlocks) ? data.infoBlocks : DEFAULT_EVENT.infoBlocks;
   e.expenses = Array.isArray(data.expenses) ? data.expenses : [];
   return e;
 }
-
 function save() {
-  db.collection(COLLECTION).doc(EVENT_ID).set(state.event).catch(err => console.error("寫入失敗", err));
+  db.collection(COLLECTION).doc(state.eventCode).set(state.event).catch(err => console.error("寫入失敗", err));
 }
-// mutate: function(event) -> void，直接改 state.event 後存檔並重繪
-function mutate(fn) {
-  fn(state.event);
-  save();
+function mutate(fn) { fn(state.event); save(); render(); }
+
+/* -------------------------------- 代號 / 身分 -------------------------------- */
+function setCode(code) {
+  code = (code || "").trim();
+  if (!code) return;
+  localStorage.setItem(CODE_KEY, code);
+  subscribe(code);
+}
+function switchCode() {
+  if (unsub) { unsub(); unsub = null; }
+  localStorage.removeItem(CODE_KEY);
+  state.eventCode = null; state.event = undefined; state.currentUserId = null;
   render();
 }
-
-/* -------------------------------- 身分識別 -------------------------------- */
 function setIdentity(id) {
   state.currentUserId = id;
-  localStorage.setItem(IDENTITY_KEY, id);
+  localStorage.setItem(identityKey(), id);
   render();
 }
 function switchIdentity() {
-  localStorage.removeItem(IDENTITY_KEY);
+  localStorage.removeItem(identityKey());
   state.currentUserId = null;
   render();
 }
 
+function renderCodeEntryScreen() {
+  let html = '<div class="identity-screen">';
+  html += '<h1>揪團懶人包</h1>';
+  html += '<p style="margin:16px 0;color:var(--color-text-soft);font-size:14px;">請輸入這次揪團的代號（跟主揪索取，或自訂一組新的來建立新揪團）</p>';
+  html += '<input class="input" id="codeInput" placeholder="例如：10513001" style="max-width:320px;margin-bottom:10px;text-align:center;">';
+  html += '<button class="btn" data-act="submitCode">進入</button>';
+  html += '</div>';
+  return html;
+}
+function renderCreateEventScreen() {
+  let html = '<div class="identity-screen">';
+  html += '<h1>建立新揪團</h1>';
+  html += '<p style="margin:16px 0;color:var(--color-text-soft);font-size:14px;">代號「' + esc(state.eventCode) + '」還沒有人建立，你是第一位，會自動成為主揪</p>';
+  html += '<input class="input" id="newEventTitle" placeholder="這趟旅行的名稱（例如：南投包棟出遊）" style="max-width:320px;margin-bottom:10px;">';
+  html += '<input class="input" id="newOrganizerName" placeholder="你的名字" style="max-width:320px;margin-bottom:10px;">';
+  html += '<button class="btn" data-act="createEvent">建立揪團並加入</button>';
+  html += '<button class="btn ghost small" style="margin-top:14px;" data-act="switchCode">代號輸入錯了？重新輸入</button>';
+  html += '</div>';
+  return html;
+}
 function renderIdentityScreen() {
   const e = state.event;
-  const hasAnyone = e.people.length > 0;
   let html = '<div class="identity-screen">';
   html += '<h1>' + esc(e.title) + '</h1>';
-  if (!hasAnyone) {
-    html += '<p style="margin:16px 0;color:var(--color-neutral-600);font-size:14px;">還沒有人建立這個揪團，輸入你的名字即可成為第一位主揪</p>';
-    html += '<input class="input" id="newOrganizerName" placeholder="你的名字" style="max-width:320px;margin-bottom:10px;">';
-    html += '<button class="btn" data-act="createFirstOrganizer">建立揪團並加入</button>';
+  if (!e.people.length) {
+    html += '<p style="margin:16px 0;color:var(--color-text-soft);font-size:14px;">主揪還沒有新增任何團員，請聯絡主揪</p>';
   } else {
-    html += '<p style="margin:16px 0;color:var(--color-neutral-600);font-size:14px;">請選擇你是哪一位</p>';
+    html += '<p style="margin:16px 0;color:var(--color-text-soft);font-size:14px;">請選擇你是哪一位</p>';
     e.people.forEach(p => {
       html += '<button class="btn secondary" data-act="claimIdentity" data-id="' + p.id + '">' +
         esc(p.name) + (p.isOrganizer ? '（主揪）' : '') + '</button>';
     });
-    html += '<div class="divider" style="width:100%;max-width:320px;"></div>';
-    html += '<p style="font-size:13px;color:var(--color-neutral-500);">名單裡沒有你？新增自己：</p>';
-    html += '<input class="input" id="newMemberName" placeholder="你的名字" style="max-width:320px;margin-bottom:10px;">';
-    html += '<button class="btn secondary" data-act="addSelfAsMember">加入這個揪團</button>';
   }
+  html += '<button class="btn ghost small" style="margin-top:14px;" data-act="switchCode">不是這個揪團？切換代號</button>';
   html += '</div>';
   return html;
 }
@@ -130,18 +174,20 @@ function renderIdentityScreen() {
 /* -------------------------------- 總覽 -------------------------------- */
 function renderOverview() {
   const e = state.event;
-  const totalPeople = e.people.length;
-  const assignedCount = Object.keys(e.roomAssignments).filter(pid => e.people.some(p => p.id === pid)).length;
+  const myRoom = e.rooms.find(r => r.id === e.roomAssignments[state.currentUserId]);
+  const myVehicle = e.vehicles.find(v => v.id === e.vehicleAssignments[state.currentUserId]);
   const myChecks = e.prepChecks[state.currentUserId] || {};
   const myDone = e.prepItems.filter(it => myChecks[it.id]).length;
-  const totalExpense = e.expenses.reduce((s, x) => s + Number(x.amount || 0), 0);
-  const balances = computeBalances();
-  const myBalance = balances[state.currentUserId] || 0;
 
   let html = '<div class="card card-bordered">';
+  html += '<div class="row"><h2>📅 旅程日期</h2>' + (isOrganizer() ? '<button class="btn ghost small" data-act="editTripDates">編輯</button>' : '') + '</div>';
+  html += '<p style="margin-top:6px;font-size:14px;">' + esc(formatTripDates(e.tripDates)) + '</p>';
+  html += '</div>';
+
+  html += '<div class="card card-bordered">';
   html += '<div class="row"><h2>集合資訊</h2>' + (isOrganizer() ? '<button class="btn ghost small" data-act="editMeetup">編輯</button>' : '') + '</div>';
   if (e.meetup.date || e.meetup.location) {
-    html += '<p style="margin-top:8px;font-size:14px;">📅 ' + esc(e.meetup.date || "未定") + ' ' + esc(e.meetup.time || "") + '</p>';
+    html += '<p style="margin-top:8px;font-size:14px;">🕒 ' + esc(e.meetup.date || "未定") + ' ' + esc(e.meetup.time || "") + '</p>';
     html += '<p style="margin-top:4px;font-size:14px;">📍 ' + esc(e.meetup.location || "未定") + '</p>';
     if (e.meetup.note) html += '<p style="margin-top:4px;font-size:13px;color:var(--color-text-soft);white-space:pre-wrap;">' + esc(e.meetup.note) + '</p>';
   } else {
@@ -149,20 +195,22 @@ function renderOverview() {
   }
   html += '</div>';
 
-  html += '<div class="section-title">重點總覽</div>';
-  html += '<div class="stat-grid">';
-  html += statTile("t-cream", "👥", totalPeople + " 人", "已分房 " + assignedCount + " 人", "rooms");
-  html += statTile("t-blue", "✅", myDone + " / " + e.prepItems.length, "我的行前準備", "prep");
-  html += statTile("t-pink", "💰", "NT$ " + fmtMoney(totalExpense), "目前總花費", "expense");
-  html += statTile("t-mint", "🧾", (myBalance >= 0 ? "收 " : "付 ") + "NT$ " + fmtMoney(Math.abs(myBalance)), "我的結算", "expense");
+  html += '<div class="card card-bordered">';
+  html += '<div class="row" data-act="toggleRoster" style="cursor:pointer;">' +
+    '<h2>👥 團員名單（' + e.people.length + '）</h2><span class="chip neutral">' + (state.ui.rosterOpen ? "收合" : "展開") + '</span></div>';
+  if (state.ui.rosterOpen) {
+    e.people.forEach(p => {
+      html += '<div class="person-line"><div class="avatar small">' + avatarText(p) + '</div><span class="name">' + esc(p.name) + (p.isOrganizer ? ' 👑' : '') + '</span></div>';
+    });
+  }
   html += '</div>';
 
-  e.infoBlocks.filter(b => b.content).forEach(b => {
-    html += '<div class="card card-bordered">';
-    html += '<h2>' + esc(b.title) + '</h2>';
-    html += '<p style="margin-top:8px;font-size:14px;white-space:pre-wrap;">' + esc(b.content) + '</p>';
-    html += '</div>';
-  });
+  html += '<div class="section-title">我的分配</div>';
+  html += '<div class="stat-grid" style="grid-template-columns:1fr 1fr 1fr;">';
+  html += statTile("t-cream", "🛏️", myRoom ? myRoom.name : "未分房", "我的房間", "rooms");
+  html += statTile("t-blue", "🚗", myVehicle ? myVehicle.name : "未分配", "我的座車", "transport");
+  html += statTile("t-mint", "✅", myDone + "/" + e.prepItems.length, "行前準備", "prep");
+  html += '</div>';
 
   html += '<p style="text-align:center;margin-top:16px;"><button class="btn ghost small" data-act="switchIdentity">不是你？切換身分</button></p>';
   return html;
@@ -170,11 +218,11 @@ function renderOverview() {
 function statTile(cls, icon, value, label, tab) {
   return '<div class="stat-tile ' + cls + '" data-act="goTab" data-tab="' + tab + '">' +
     '<span class="stat-icon">' + icon + '</span>' +
-    '<div><div class="stat-value">' + esc(value) + '</div><div class="stat-label">' + esc(label) + '</div></div>' +
+    '<div><div class="stat-value" style="font-size:17px;">' + esc(value) + '</div><div class="stat-label">' + esc(label) + '</div></div>' +
     '</div>';
 }
 
-/* -------------------------------- 人員 / 分房 -------------------------------- */
+/* -------------------------------- 分房 -------------------------------- */
 function renderRoomsTab() {
   const e = state.event;
   const org = isOrganizer();
@@ -192,7 +240,7 @@ function renderRoomsTab() {
     if (members.length) {
       html += '<div style="margin-top:8px;">';
       members.forEach(p => {
-        html += '<div class="person-line"><div class="avatar small">' + initials(p.name) + '</div><span class="name">' + esc(p.name) + '</span>' +
+        html += '<div class="person-line"><div class="avatar small">' + avatarText(p) + '</div><span class="name">' + esc(p.name) + '</span>' +
           (canEditPerson(p.id) ? '<button class="btn ghost small" data-act="unassignRoom" data-id="' + p.id + '">移出</button>' : '') + '</div>';
       });
       html += '</div>';
@@ -206,7 +254,7 @@ function renderRoomsTab() {
   html += '<h2 style="margin-bottom:8px;">未分房（' + unassigned.length + '）</h2>';
   if (!unassigned.length) html += '<p class="empty-hint">大家都分好房間了</p>';
   unassigned.forEach(p => {
-    html += '<div class="person-line"><div class="avatar small">' + initials(p.name) + '</div><span class="name">' + esc(p.name) + (p.isOrganizer ? ' 👑' : '') + '</span>';
+    html += '<div class="person-line"><div class="avatar small">' + avatarText(p) + '</div><span class="name">' + esc(p.name) + (p.isOrganizer ? ' 👑' : '') + '</span>';
     if (canEditPerson(p.id) && e.rooms.length) {
       html += '<select class="input input-compact" style="width:auto;" data-act="assignRoom" data-id="' + p.id + '">';
       html += '<option value="">選房間</option>';
@@ -219,20 +267,97 @@ function renderRoomsTab() {
   });
   html += '</div>';
 
-  html += '<div class="card card-bordered">';
-  html += '<div class="row"><h2>團員名單（' + e.people.length + '）</h2>' + '<button class="btn ghost small" data-act="addPersonPrompt">＋新增團員</button></div>';
+  html += renderRosterManageCard();
+  return html;
+}
+
+function renderRosterManageCard() {
+  const e = state.event, org = isOrganizer();
+  let html = '<div class="card card-bordered">';
+  html += '<div class="row"><h2>團員管理（' + e.people.length + '）</h2>' + (org ? '<button class="btn ghost small" data-act="addPersonPrompt">＋新增團員</button>' : '') + '</div>';
+  if (!org) html += '<p class="empty-hint">團員名單由主揪管理</p>';
   e.people.forEach(p => {
-    html += '<div class="person-line"><div class="avatar small">' + initials(p.name) + '</div><span class="name">' + esc(p.name) + (p.isOrganizer ? ' 👑主揪' : '') + '</span>';
-    if (org && p.id !== state.currentUserId) {
-      html += '<button class="btn ghost small" data-act="toggleOrganizer" data-id="' + p.id + '">' + (p.isOrganizer ? '取消主揪' : '設為主揪') + '</button>';
-      html += '<button class="btn ghost small" data-act="removePerson" data-id="' + p.id + '">移除</button>';
+    html += '<div class="person-line"><div class="avatar small">' + avatarText(p) + '</div><span class="name">' + esc(p.name) + (p.nickname ? '（' + esc(p.nickname) + '）' : '') + (p.isOrganizer ? ' 👑主揪' : '') + '</span>';
+    if (org) {
+      html += '<button class="btn ghost small" data-act="editPerson" data-id="' + p.id + '">編輯</button>';
+      if (p.id !== state.currentUserId) {
+        html += '<button class="btn ghost small" data-act="toggleOrganizer" data-id="' + p.id + '">' + (p.isOrganizer ? '取消主揪' : '設為主揪') + '</button>';
+        html += '<button class="btn ghost small" data-act="removePerson" data-id="' + p.id + '">移除</button>';
+      }
     }
     html += '</div>';
   });
   html += '</div>';
   return html;
 }
-function canEditPerson(pid) { return isOrganizer() || pid === state.currentUserId; }
+
+/* -------------------------------- 交通 -------------------------------- */
+function renderTransportTab() {
+  const e = state.event;
+  const org = isOrganizer();
+
+  let html = '<div class="card card-bordered">';
+  html += '<h2 style="margin-bottom:8px;">抵達方式與時間</h2>';
+  e.people.forEach(p => {
+    const a = e.arrivals[p.id] || {};
+    const editable = canEditPerson(p.id);
+    html += '<div style="padding:8px 0;border-bottom:1px solid var(--color-divider);">';
+    html += '<div class="person-line" style="padding:0 0 6px;"><div class="avatar small">' + avatarText(p) + '</div><span class="name">' + esc(p.name) + '</span></div>';
+    if (editable) {
+      html += '<div class="row" style="gap:8px;">';
+      html += '<input class="input input-compact" style="flex:1;" placeholder="交通方式（例如：台鐵）" data-act="editArrivalMethod" data-id="' + p.id + '" value="' + esc(a.method || "") + '">';
+      html += '<input class="input input-compact" style="flex:1;" placeholder="預計時間（例如：12:53）" data-act="editArrivalEta" data-id="' + p.id + '" value="' + esc(a.eta || "") + '">';
+      html += '</div>';
+    } else {
+      html += '<p style="font-size:13px;color:var(--color-text-soft);">' + (a.method || a.eta ? esc(a.method || "") + ' ・ ' + esc(a.eta || "") : "尚未填寫") + '</p>';
+    }
+    html += '</div>';
+  });
+  if (!e.people.length) html += '<p class="empty-hint">尚無團員</p>';
+  html += '</div>';
+
+  html += '<div class="card card-bordered">';
+  html += '<div class="row"><h2>座車分配</h2>' + (org ? '<button class="btn ghost small" data-act="addVehicle">＋新增座車</button>' : '') + '</div>';
+  if (e.vehicles.length === 0) html += '<p class="empty-hint">尚未建立座車</p>';
+  e.vehicles.forEach(v => {
+    const members = e.people.filter(p => e.vehicleAssignments[p.id] === v.id);
+    const full = v.capacity && members.length >= v.capacity;
+    html += '<div class="room-card' + (full ? ' full' : '') + '">';
+    html += '<div class="row"><strong>' + esc(v.name) + '</strong>' +
+      '<span class="chip' + (full ? ' warn' : ' neutral') + '">' + members.length + (v.capacity ? "/" + v.capacity : "") + ' 人</span></div>';
+    if (org) html += '<div style="margin-top:6px;"><button class="btn ghost small" data-act="editVehicle" data-id="' + v.id + '">編輯</button>' +
+      '<button class="btn ghost small" data-act="deleteVehicle" data-id="' + v.id + '">刪除</button></div>';
+    if (members.length) {
+      html += '<div style="margin-top:8px;">';
+      members.forEach(p => {
+        html += '<div class="person-line"><div class="avatar small">' + avatarText(p) + '</div><span class="name">' + esc(p.name) + '</span>' +
+          (canEditPerson(p.id) ? '<button class="btn ghost small" data-act="unassignVehicle" data-id="' + p.id + '">移出</button>' : '') + '</div>';
+      });
+      html += '</div>';
+    }
+    html += '</div>';
+  });
+  html += '</div>';
+
+  const unassigned = e.people.filter(p => !e.vehicleAssignments[p.id]);
+  html += '<div class="card card-bordered">';
+  html += '<h2 style="margin-bottom:8px;">未分配座車（' + unassigned.length + '）</h2>';
+  if (!unassigned.length) html += '<p class="empty-hint">大家都分好座車了</p>';
+  unassigned.forEach(p => {
+    html += '<div class="person-line"><div class="avatar small">' + avatarText(p) + '</div><span class="name">' + esc(p.name) + '</span>';
+    if (canEditPerson(p.id) && e.vehicles.length) {
+      html += '<select class="input input-compact" style="width:auto;" data-act="assignVehicle" data-id="' + p.id + '">';
+      html += '<option value="">選座車</option>';
+      e.vehicles.forEach(v => { html += '<option value="' + v.id + '">' + esc(v.name) + '</option>'; });
+      html += '</select>';
+    } else if (!e.vehicles.length) {
+      html += '<span class="empty-hint" style="padding:0;">尚無座車</span>';
+    }
+    html += '</div>';
+  });
+  html += '</div>';
+  return html;
+}
 
 /* -------------------------------- 行前準備 -------------------------------- */
 function renderPrepTab() {
@@ -246,7 +371,7 @@ function renderPrepTab() {
 
   if (org && state.ui.prepView === "matrix") {
     html += '<div class="matrix-wrap"><table class="matrix"><thead><tr><th class="name-col">項目</th>';
-    e.people.forEach(p => { html += '<th>' + esc(p.name.slice(0, 4)) + '</th>'; });
+    e.people.forEach(p => { html += '<th>' + avatarText(p) + '</th>'; });
     html += '</tr></thead><tbody>';
     e.prepItems.forEach(it => {
       html += '<tr><td class="name-col">' + esc(it.label) + '</td>';
@@ -270,7 +395,7 @@ function renderPrepTab() {
     html += '<div class="divider"></div>';
     html += '<div class="row"><input class="input" id="newPrepLabel" placeholder="新增項目名稱"><button class="btn small" data-act="addPrepItem">新增</button></div>';
     if (e.prepItems.length) {
-      html += '<p style="margin-top:8px;font-size:12.5px;color:var(--color-neutral-500);">刪除項目：</p>';
+      html += '<p style="margin-top:8px;font-size:12.5px;color:var(--color-text-soft);">刪除項目：</p>';
       e.prepItems.forEach(it => { html += '<button class="btn ghost small" data-act="deletePrepItem" data-id="' + it.id + '">✕ ' + esc(it.label) + '</button>'; });
     }
   }
@@ -338,7 +463,6 @@ function computeSettlements(net) {
   }
   return result;
 }
-
 function renderExpenseTab() {
   const e = state.event;
   const total = e.expenses.reduce((s, x) => s + Number(x.amount || 0), 0);
@@ -351,7 +475,7 @@ function renderExpenseTab() {
   [...e.expenses].reverse().forEach(ex => {
     html += '<div class="row" style="padding:8px 0;border-bottom:1px solid var(--color-divider);">';
     html += '<div><div style="font-size:14px;font-weight:600;">' + esc(ex.note || "（無備註）") + '</div>';
-    html += '<div style="font-size:12.5px;color:var(--color-neutral-500);">' + esc(personName(ex.payerId)) + ' 付款 · ' + (ex.splitAmong || []).length + ' 人分攤</div></div>';
+    html += '<div style="font-size:12.5px;color:var(--color-text-soft);">' + esc(personName(ex.payerId)) + ' 付款 · ' + (ex.splitAmong || []).length + ' 人分攤</div></div>';
     html += '<div style="text-align:right;"><div style="font-weight:700;">NT$ ' + fmtMoney(ex.amount) + '</div>';
     if (isOrganizer() || ex.payerId === state.currentUserId) html += '<button class="btn ghost small" data-act="deleteExpense" data-id="' + ex.id + '">刪除</button>';
     html += '</div></div>';
@@ -377,7 +501,6 @@ function renderExpenseTab() {
   html += '</div>';
   return html;
 }
-
 function renderExpenseModal() {
   const e = state.event;
   let html = '<div class="modal-backdrop"><div class="modal-sheet">';
@@ -402,6 +525,7 @@ function renderExpenseModal() {
 const TAB_ICONS = {
   overview: '<path d="M3 10.5 12 3l9 7.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 9.5V21h14V9.5" stroke-linecap="round" stroke-linejoin="round"/>',
   rooms: '<path d="M3 18v-6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v6" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 18h18" stroke-linecap="round"/><path d="M7 10V7a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v3" stroke-linecap="round" stroke-linejoin="round"/>',
+  transport: '<path d="M5 11l1.5-4.5A2 2 0 0 1 8.4 5h7.2a2 2 0 0 1 1.9 1.5L19 11" stroke-linecap="round" stroke-linejoin="round"/><rect x="3" y="11" width="18" height="6" rx="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="7.5" cy="17.5" r="1.3"/><circle cx="16.5" cy="17.5" r="1.3"/>',
   prep: '<rect x="3" y="3" width="18" height="18" rx="4"/><path d="m8 12 3 3 5-6" stroke-linecap="round" stroke-linejoin="round"/>',
   info: '<rect x="3" y="4" width="18" height="17" rx="3"/><path d="M16 2v4M8 2v4M3 9h18" stroke-linecap="round"/>',
   expense: '<path d="M3 7a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" stroke-linecap="round" stroke-linejoin="round"/><path d="M16 12h2" stroke-linecap="round"/>'
@@ -409,6 +533,7 @@ const TAB_ICONS = {
 const TABS = [
   { id: "overview", label: "總覽" },
   { id: "rooms", label: "分房" },
+  { id: "transport", label: "交通" },
   { id: "prep", label: "準備" },
   { id: "info", label: "行程" },
   { id: "expense", label: "記帳" }
@@ -425,22 +550,23 @@ function renderTabbar() {
 
 function render() {
   const app = document.getElementById("app");
-  if (!state.event) { app.innerHTML = '<div class="empty-hint">載入中...</div>'; return; }
-  if (!state.currentUserId || !me()) {
-    app.innerHTML = renderIdentityScreen();
-    return;
-  }
+  if (!state.eventCode) { app.innerHTML = renderCodeEntryScreen(); return; }
+  if (state.event === undefined) { app.innerHTML = '<div class="empty-hint">載入中...</div>'; return; }
+  if (state.event === null) { app.innerHTML = renderCreateEventScreen(); return; }
+  if (!state.currentUserId || !me()) { app.innerHTML = renderIdentityScreen(); return; }
+
   let body = "";
   if (state.ui.tab === "overview") body = renderOverview();
   else if (state.ui.tab === "rooms") body = renderRoomsTab();
+  else if (state.ui.tab === "transport") body = renderTransportTab();
   else if (state.ui.tab === "prep") body = renderPrepTab();
   else if (state.ui.tab === "info") body = renderInfoTab();
   else if (state.ui.tab === "expense") body = renderExpenseTab();
 
   let html = '<div class="header"><div>' +
     '<div class="greet-small">Hi, ' + esc(me().name) + (isOrganizer() ? "（主揪）" : "") + '</div>' +
-    '<h1>' + esc(state.event.title) + '</h1></div>' +
-    '<div class="avatar-badge">' + initials(me().name) + '</div></div>';
+    '<h1 ' + (isOrganizer() ? 'data-act="editTitle" style="cursor:pointer;"' : '') + '>' + esc(state.event.title) + '</h1></div>' +
+    '<div class="avatar-badge">' + avatarText(me()) + '</div></div>';
   html += body;
   if (state.ui.tab === "expense") html += '<button class="fab" data-act="openExpenseModal">＋</button>';
   html += renderTabbar();
@@ -450,8 +576,6 @@ function render() {
 
 /* -------------------------------- 事件委派 -------------------------------- */
 document.addEventListener("click", e => {
-  // 點擊 modal 背景（而不是裡面的內容）時關閉 modal，用直接比對目標，不靠 closest，
-  // 避免跟 sheet 內按鈕的事件委派互相干擾
   if (e.target.classList && e.target.classList.contains("modal-backdrop")) {
     state.ui.expenseModal = false; render(); return;
   }
@@ -460,28 +584,41 @@ document.addEventListener("click", e => {
   const act = el.dataset.act;
   const id = el.dataset.id;
 
-  if (act === "createFirstOrganizer") {
+  if (act === "submitCode") {
+    setCode(document.getElementById("codeInput").value);
+  } else if (act === "switchCode") {
+    switchCode();
+  } else if (act === "createEvent") {
+    const title = document.getElementById("newEventTitle").value.trim() || DEFAULT_EVENT.title;
     const name = document.getElementById("newOrganizerName").value.trim();
     if (!name) return;
     const pid = uid();
-    mutate(ev => { ev.people.push({ id: pid, name, isOrganizer: true }); });
+    const ev = JSON.parse(JSON.stringify(DEFAULT_EVENT));
+    ev.title = title;
+    ev.people.push({ id: pid, name, nickname: name.slice(0, 2), isOrganizer: true });
+    state.event = ev;
+    save();
     setIdentity(pid);
   } else if (act === "claimIdentity") {
     setIdentity(id);
-  } else if (act === "addSelfAsMember") {
-    const name = document.getElementById("newMemberName").value.trim();
-    if (!name) return;
-    const pid = uid();
-    mutate(ev => { ev.people.push({ id: pid, name, isOrganizer: false }); });
-    setIdentity(pid);
   } else if (act === "switchIdentity") {
     switchIdentity();
   } else if (act === "goTab") {
     state.ui.tab = el.dataset.tab; render();
+  } else if (act === "toggleRoster") {
+    state.ui.rosterOpen = !state.ui.rosterOpen; render();
+  } else if (act === "editTitle") {
+    const t = window.prompt("旅行名稱", state.event.title);
+    if (t && t.trim()) mutate(ev => { ev.title = t.trim(); });
+  } else if (act === "editTripDates") {
+    const ev0 = state.event;
+    const start = window.prompt("出發日期（格式 YYYY-MM-DD，例如 2026-10-18）", ev0.tripDates.start) ?? ev0.tripDates.start;
+    const end = window.prompt("結束日期（當天來回可留空或跟出發日相同）", ev0.tripDates.end) ?? ev0.tripDates.end;
+    mutate(ev => { ev.tripDates = { start: start.trim(), end: end.trim() }; });
   } else if (act === "editMeetup") {
     const ev = state.event;
-    const date = window.prompt("日期（例如 2026/11/1）", ev.meetup.date) ?? ev.meetup.date;
-    const time = window.prompt("時間", ev.meetup.time) ?? ev.meetup.time;
+    const date = window.prompt("集合日期（例如 2026/10/18）", ev.meetup.date) ?? ev.meetup.date;
+    const time = window.prompt("集合時間", ev.meetup.time) ?? ev.meetup.time;
     const location = window.prompt("集合地點", ev.meetup.location) ?? ev.meetup.location;
     const note = window.prompt("補充說明", ev.meetup.note) ?? ev.meetup.note;
     mutate(e2 => { e2.meetup = { date, time, location, note }; });
@@ -503,9 +640,33 @@ document.addEventListener("click", e => {
   } else if (act === "unassignRoom") {
     if (!canEditPerson(id)) return;
     mutate(ev => { delete ev.roomAssignments[id]; });
+  } else if (act === "addVehicle") {
+    const name = window.prompt("座車名稱（例如：小美的車 / 9人座租車）"); if (!name) return;
+    const cap = Number(window.prompt("可乘坐人數上限（可留空）", "4") || 0);
+    mutate(ev => { ev.vehicles.push({ id: uid(), name, capacity: cap || 0 }); });
+  } else if (act === "editVehicle") {
+    const v = state.event.vehicles.find(x => x.id === id); if (!v) return;
+    const name = window.prompt("座車名稱", v.name) ?? v.name;
+    const cap = Number(window.prompt("可乘坐人數上限", v.capacity || 0) || 0);
+    mutate(ev => { const vv = ev.vehicles.find(x => x.id === id); vv.name = name; vv.capacity = cap; });
+  } else if (act === "deleteVehicle") {
+    if (!confirm("確定刪除這台座車？裡面的人會變成未分配")) return;
+    mutate(ev => {
+      ev.vehicles = ev.vehicles.filter(x => x.id !== id);
+      Object.keys(ev.vehicleAssignments).forEach(pid => { if (ev.vehicleAssignments[pid] === id) delete ev.vehicleAssignments[pid]; });
+    });
+  } else if (act === "unassignVehicle") {
+    if (!canEditPerson(id)) return;
+    mutate(ev => { delete ev.vehicleAssignments[id]; });
   } else if (act === "addPersonPrompt") {
     const name = window.prompt("團員姓名"); if (!name) return;
-    mutate(ev => { ev.people.push({ id: uid(), name, isOrganizer: false }); });
+    const nickname = window.prompt("簡稱（顯示在頭像上，可留空）", name.slice(0, 2)) || name.slice(0, 2);
+    mutate(ev => { ev.people.push({ id: uid(), name, nickname, isOrganizer: false }); });
+  } else if (act === "editPerson") {
+    const p = state.event.people.find(x => x.id === id); if (!p) return;
+    const name = window.prompt("姓名", p.name) ?? p.name;
+    const nickname = window.prompt("簡稱（顯示在頭像上）", p.nickname || name.slice(0, 2)) ?? p.nickname;
+    mutate(ev => { const pp = ev.people.find(x => x.id === id); pp.name = name; pp.nickname = nickname; });
   } else if (act === "toggleOrganizer") {
     mutate(ev => { const p = ev.people.find(x => x.id === id); p.isOrganizer = !p.isOrganizer; });
   } else if (act === "removePerson") {
@@ -513,7 +674,9 @@ document.addEventListener("click", e => {
     mutate(ev => {
       ev.people = ev.people.filter(x => x.id !== id);
       delete ev.roomAssignments[id];
+      delete ev.vehicleAssignments[id];
       delete ev.prepChecks[id];
+      delete ev.arrivals[id];
     });
   } else if (act === "setPrepView") {
     state.ui.prepView = el.dataset.v; render();
@@ -558,10 +721,10 @@ document.addEventListener("change", e => {
   const act = el.dataset.act, id = el.dataset.id;
   if (act === "assignRoom") {
     const roomId = el.value;
-    mutate(ev => {
-      if (roomId) ev.roomAssignments[id] = roomId;
-      else delete ev.roomAssignments[id];
-    });
+    mutate(ev => { if (roomId) ev.roomAssignments[id] = roomId; else delete ev.roomAssignments[id]; });
+  } else if (act === "assignVehicle") {
+    const vehicleId = el.value;
+    mutate(ev => { if (vehicleId) ev.vehicleAssignments[id] = vehicleId; else delete ev.vehicleAssignments[id]; });
   }
 });
 
@@ -573,6 +736,10 @@ document.addEventListener("blur", e => {
     mutate(ev => { ev.infoBlocks.find(x => x.id === id).title = el.value; });
   } else if (act === "editInfoContent") {
     mutate(ev => { ev.infoBlocks.find(x => x.id === id).content = el.value; });
+  } else if (act === "editArrivalMethod") {
+    mutate(ev => { ev.arrivals[id] = Object.assign({}, ev.arrivals[id], { method: el.value }); });
+  } else if (act === "editArrivalEta") {
+    mutate(ev => { ev.arrivals[id] = Object.assign({}, ev.arrivals[id], { eta: el.value }); });
   }
 }, true);
 
