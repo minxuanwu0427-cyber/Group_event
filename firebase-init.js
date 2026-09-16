@@ -2,12 +2,12 @@
    Firebase 初始化：匿名登入 + Firestore 連線
    ========================================================================== */
 const firebaseConfig = {
-  apiKey: "AIzaSyA7ncuXfQGtuau8gPGE_CjdqqR0tU-E94U",
-  authDomain: "travel-planner-76344.firebaseapp.com",
-  projectId: "travel-planner-76344",
-  storageBucket: "travel-planner-76344.firebasestorage.app",
-  messagingSenderId: "709960710096",
-  appId: "1:709960710096:web:b2bc2b05d3a18e6e9b6bd5"
+  apiKey: "AIzaSyA3KKp7mef_yUqsHRGo3btGqYxpSMMhYmM",
+  authDomain: "group-travel-56b6f.firebaseapp.com",
+  projectId: "group-travel-56b6f",
+  storageBucket: "group-travel-56b6f.firebasestorage.app",
+  messagingSenderId: "422594331975",
+  appId: "1:422594331975:web:bfc3f202692f4b26247862"
 };
 
 firebase.initializeApp(firebaseConfig);
