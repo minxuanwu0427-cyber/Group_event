@@ -31,7 +31,7 @@ const state = {
   eventCode: localStorage.getItem(CODE_KEY) || null,
   event: undefined,       // undefined=載入中 / null=此代號尚未建立 / object=正常資料
   currentUserId: null,
-  ui: { tab: "overview", expenseModal: false, infoEditId: null, rosterOpen: false, roomsSubTab: "room", viewMode: false, arrivalModalFor: null, arrivalMethodTemp: null }
+  ui: { tab: "overview", expenseModal: false, infoEditId: null, rosterOpen: false, roomsSubTab: "room", viewMode: false, arrivalModalFor: null, arrivalMethodTemp: null, arrivalsOpen: false }
 };
 
 function uid() { return "id_" + Math.random().toString(36).slice(2, 10); }
@@ -271,10 +271,10 @@ function renderRoomsTab() {
       if (org) html += '<div style="margin-top:6px;"><button class="btn ghost small" data-act="editRoom" data-id="' + r.id + '">編輯</button>' +
         '<button class="btn ghost small" data-act="deleteRoom" data-id="' + r.id + '">刪除</button></div>';
       if (members.length) {
-        html += '<div class="two-col-grid" style="margin-top:8px;">';
+        html += '<div class="chip-grid grid-4" style="margin-top:8px;">';
         members.forEach(p => {
-          html += '<div class="person-line"><div class="avatar small">' + avatarText(p) + '</div><span class="name">' + esc(p.name) + '</span>' +
-            (canEditPerson(p.id) ? '<button class="btn ghost small" data-act="unassignRoom" data-id="' + p.id + '">移出</button>' : '') + '</div>';
+          html += '<div class="person-chip"><div class="avatar small">' + avatarText(p) + '</div><span class="name">' + esc(p.name) +
+            (canEditPerson(p.id) ? ' <a class="x-remove" data-act="unassignRoom" data-id="' + p.id + '">✕</a>' : '') + '</span></div>';
         });
         html += '</div>';
       }
@@ -314,10 +314,10 @@ function renderRoomsTab() {
       if (org) html += '<div style="margin-top:6px;"><button class="btn ghost small" data-act="editVehicle" data-id="' + v.id + '">編輯</button>' +
         '<button class="btn ghost small" data-act="deleteVehicle" data-id="' + v.id + '">刪除</button></div>';
       if (members.length) {
-        html += '<div class="two-col-grid" style="margin-top:8px;">';
+        html += '<div class="chip-grid grid-3" style="margin-top:8px;">';
         members.forEach(p => {
-          html += '<div class="person-line"><div class="avatar small">' + avatarText(p) + '</div><span class="name">' + esc(p.name) + '</span>' +
-            (canEditPerson(p.id) ? '<button class="btn ghost small" data-act="unassignVehicle" data-id="' + p.id + '">移出</button>' : '') + '</div>';
+          html += '<div class="person-chip"><div class="avatar small">' + avatarText(p) + '</div><span class="name">' + esc(p.name) +
+            (canEditPerson(p.id) ? ' <a class="x-remove" data-act="unassignVehicle" data-id="' + p.id + '">✕</a>' : '') + '</span></div>';
         });
         html += '</div>';
       }
@@ -352,17 +352,22 @@ const ARRIVAL_PRESETS = ["台鐵", "高鐵", "開車", "其他"];
 function renderTransportSection() {
   const e = state.event;
   let html = '<div class="card card-bordered">';
-  html += '<h2 style="margin-bottom:8px;">抵達方式與時間</h2>';
-  e.people.forEach(p => {
-    const a = e.arrivals[p.id] || {};
-    const editable = canEditPerson(p.id);
-    const summary = (a.method || a.eta) ? esc(a.method || "") + (a.eta ? "・" + esc(a.eta) : "") : "尚未填寫";
-    html += '<div class="row" ' + (editable ? 'data-act="openArrivalModal" data-id="' + p.id + '"' : '') + ' style="padding:8px 0;border-bottom:1px solid var(--color-divider);' + (editable ? 'cursor:pointer;' : '') + '">';
-    html += '<div class="person-line" style="padding:0;"><div class="avatar small">' + avatarText(p) + '</div><span class="name">' + esc(p.name) + '</span></div>';
-    html += '<span class="' + (a.method || a.eta ? "" : "empty-hint") + '" style="font-size:13px;padding:0;">' + summary + '</span>';
+  html += '<div class="row" data-act="toggleArrivals" style="cursor:pointer;">' +
+    '<h2>抵達方式與時間</h2><span class="chip neutral">' + (state.ui.arrivalsOpen ? "收合" : "展開") + '</span></div>';
+  if (state.ui.arrivalsOpen) {
+    html += '<div style="margin-top:8px;">';
+    e.people.forEach(p => {
+      const a = e.arrivals[p.id] || {};
+      const editable = canEditPerson(p.id);
+      const summary = (a.method || a.eta) ? esc(a.method || "") + (a.eta ? "・" + esc(a.eta) : "") : "尚未填寫";
+      html += '<div class="row" ' + (editable ? 'data-act="openArrivalModal" data-id="' + p.id + '"' : '') + ' style="padding:8px 0;border-bottom:1px solid var(--color-divider);' + (editable ? 'cursor:pointer;' : '') + '">';
+      html += '<div class="person-line" style="padding:0;"><div class="avatar small">' + avatarText(p) + '</div><span class="name">' + esc(p.name) + '</span></div>';
+      html += '<span class="' + (a.method || a.eta ? "" : "empty-hint") + '" style="font-size:13px;padding:0;">' + summary + '</span>';
+      html += '</div>';
+    });
+    if (!e.people.length) html += '<p class="empty-hint">尚無團員</p>';
     html += '</div>';
-  });
-  if (!e.people.length) html += '<p class="empty-hint">尚無團員</p>';
+  }
   html += '</div>';
   return html;
 }
@@ -403,16 +408,17 @@ function renderPrepTab() {
   items.forEach(it => {
     const assignees = e.people.filter(p => (it.assigneeIds || []).includes(p.id));
     const isMine = (it.assigneeIds || []).includes(myId);
-    html += '<div style="padding:8px 0;border-bottom:1px solid var(--color-divider);' + (isMine ? 'background:var(--color-mint);border-radius:8px;padding-left:6px;padding-right:6px;' : '') + '">';
-    html += '<div class="row" style="align-items:flex-start;">';
-    html += '<div style="display:flex;gap:-4px;flex-shrink:0;">';
+    html += '<div style="padding:8px 0;border-bottom:1px solid var(--color-divider);">';
+    html += '<div class="row" style="align-items:center;flex-wrap:wrap;">';
+    html += '<span style="flex:1;font-size:14px;min-width:120px;">' + (isMine ? "★ " : "") + esc(it.label) + '</span>';
     if (assignees.length) {
-      assignees.forEach(p => { html += '<div class="avatar small" style="margin-right:-6px;border:2px solid white;">' + avatarText(p) + '</div>'; });
+      assignees.forEach(p => {
+        html += '<div class="avatar small" style="margin-left:6px;">' + avatarText(p) + '</div>' +
+          '<span class="name" style="margin-left:4px;margin-right:2px;font-size:13px;">' + esc(p.name) + '</span>';
+      });
     } else {
-      html += '<div class="avatar small">？</div>';
+      html += '<span class="empty-hint" style="padding:0;margin-left:6px;">尚未分配</span>';
     }
-    html += '</div>';
-    html += '<span class="name" style="flex:1;margin-left:6px;">' + esc(it.label) + (isMine ? ' <span class="chip">我負責</span>' : '') + '</span>';
     if (org) html += '<button class="btn ghost small" data-act="deletePrepTask" data-id="' + it.id + '">刪除</button>';
     html += '</div>';
     if (org) {
@@ -423,8 +429,6 @@ function renderPrepTab() {
           '<input type="checkbox" data-act="togglePrepAssignee" data-id="' + it.id + '" data-pid="' + p.id + '"' + (checked ? " checked" : "") + '> ' + esc(p.name) + '</label>';
       });
       html += '</div>';
-    } else {
-      html += '<div style="font-size:12.5px;color:var(--color-text-soft);margin-top:2px;">' + (assignees.length ? assignees.map(p => esc(p.name)).join("、") : "尚未分配") + '</div>';
     }
     html += '</div>';
   });
@@ -640,6 +644,8 @@ document.addEventListener("click", e => {
     render();
   } else if (act === "toggleViewMode") {
     state.ui.viewMode = !state.ui.viewMode; render();
+  } else if (act === "toggleArrivals") {
+    state.ui.arrivalsOpen = !state.ui.arrivalsOpen; render();
   } else if (act === "toggleRoster") {
     state.ui.rosterOpen = !state.ui.rosterOpen; render();
   } else if (act === "editTitle") {
