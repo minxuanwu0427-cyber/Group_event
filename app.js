@@ -143,18 +143,18 @@ function renderOverview() {
   if (e.meetup.date || e.meetup.location) {
     html += '<p style="margin-top:8px;font-size:14px;">📅 ' + esc(e.meetup.date || "未定") + ' ' + esc(e.meetup.time || "") + '</p>';
     html += '<p style="margin-top:4px;font-size:14px;">📍 ' + esc(e.meetup.location || "未定") + '</p>';
-    if (e.meetup.note) html += '<p style="margin-top:4px;font-size:13px;color:var(--color-neutral-600);white-space:pre-wrap;">' + esc(e.meetup.note) + '</p>';
+    if (e.meetup.note) html += '<p style="margin-top:4px;font-size:13px;color:var(--color-text-soft);white-space:pre-wrap;">' + esc(e.meetup.note) + '</p>';
   } else {
     html += '<p class="empty-hint" style="padding:8px 0;">尚未填寫集合資訊</p>';
   }
   html += '</div>';
 
-  html += '<div class="card card-bordered">';
-  html += '<h2 style="margin-bottom:10px;">重點總覽</h2>';
-  html += statLine("👥 團員人數", totalPeople + " 人（已分房 " + assignedCount + "）", "rooms");
-  html += statLine("✅ 我的行前準備", myDone + " / " + e.prepItems.length, "prep");
-  html += statLine("💰 目前總花費", "NT$ " + fmtMoney(totalExpense), "expense");
-  html += statLine("🧾 我的結算", (myBalance >= 0 ? "應收回 NT$ " + fmtMoney(myBalance) : "應付 NT$ " + fmtMoney(-myBalance)), "expense");
+  html += '<div class="section-title">重點總覽</div>';
+  html += '<div class="stat-grid">';
+  html += statTile("t-cream", "👥", totalPeople + " 人", "已分房 " + assignedCount + " 人", "rooms");
+  html += statTile("t-blue", "✅", myDone + " / " + e.prepItems.length, "我的行前準備", "prep");
+  html += statTile("t-pink", "💰", "NT$ " + fmtMoney(totalExpense), "目前總花費", "expense");
+  html += statTile("t-mint", "🧾", (myBalance >= 0 ? "收 " : "付 ") + "NT$ " + fmtMoney(Math.abs(myBalance)), "我的結算", "expense");
   html += '</div>';
 
   e.infoBlocks.filter(b => b.content).forEach(b => {
@@ -167,9 +167,11 @@ function renderOverview() {
   html += '<p style="text-align:center;margin-top:16px;"><button class="btn ghost small" data-act="switchIdentity">不是你？切換身分</button></p>';
   return html;
 }
-function statLine(label, value, tab) {
-  return '<div class="row" data-act="goTab" data-tab="' + tab + '" style="cursor:pointer;padding:6px 0;">' +
-    '<span style="font-size:14px;">' + label + '</span><span class="chip">' + value + '</span></div>';
+function statTile(cls, icon, value, label, tab) {
+  return '<div class="stat-tile ' + cls + '" data-act="goTab" data-tab="' + tab + '">' +
+    '<span class="stat-icon">' + icon + '</span>' +
+    '<div><div class="stat-value">' + esc(value) + '</div><div class="stat-label">' + esc(label) + '</div></div>' +
+    '</div>';
 }
 
 /* -------------------------------- 人員 / 分房 -------------------------------- */
@@ -397,6 +399,13 @@ function renderExpenseModal() {
 }
 
 /* -------------------------------- Tabbar / Shell -------------------------------- */
+const TAB_ICONS = {
+  overview: '<path d="M3 10.5 12 3l9 7.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 9.5V21h14V9.5" stroke-linecap="round" stroke-linejoin="round"/>',
+  rooms: '<path d="M3 18v-6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v6" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 18h18" stroke-linecap="round"/><path d="M7 10V7a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v3" stroke-linecap="round" stroke-linejoin="round"/>',
+  prep: '<rect x="3" y="3" width="18" height="18" rx="4"/><path d="m8 12 3 3 5-6" stroke-linecap="round" stroke-linejoin="round"/>',
+  info: '<rect x="3" y="4" width="18" height="17" rx="3"/><path d="M16 2v4M8 2v4M3 9h18" stroke-linecap="round"/>',
+  expense: '<path d="M3 7a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" stroke-linecap="round" stroke-linejoin="round"/><path d="M16 12h2" stroke-linecap="round"/>'
+};
 const TABS = [
   { id: "overview", label: "總覽" },
   { id: "rooms", label: "分房" },
@@ -407,7 +416,8 @@ const TABS = [
 function renderTabbar() {
   let html = '<div class="tabbar">';
   TABS.forEach(t => {
-    html += '<button class="' + (state.ui.tab === t.id ? "active" : "") + '" data-act="goTab" data-tab="' + t.id + '">' + t.label + '</button>';
+    html += '<button class="' + (state.ui.tab === t.id ? "active" : "") + '" data-act="goTab" data-tab="' + t.id + '" aria-label="' + t.label + '">' +
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' + TAB_ICONS[t.id] + '</svg></button>';
   });
   html += '</div>';
   return html;
@@ -427,8 +437,10 @@ function render() {
   else if (state.ui.tab === "info") body = renderInfoTab();
   else if (state.ui.tab === "expense") body = renderExpenseTab();
 
-  let html = '<div class="header"><h1>' + esc(state.event.title) + '</h1>' +
-    '<div class="meta">Hi, ' + esc(me().name) + (isOrganizer() ? "（主揪）" : "") + '</div></div>';
+  let html = '<div class="header"><div>' +
+    '<div class="greet-small">Hi, ' + esc(me().name) + (isOrganizer() ? "（主揪）" : "") + '</div>' +
+    '<h1>' + esc(state.event.title) + '</h1></div>' +
+    '<div class="avatar-badge">' + initials(me().name) + '</div></div>';
   html += body;
   if (state.ui.tab === "expense") html += '<button class="fab" data-act="openExpenseModal">＋</button>';
   html += renderTabbar();
