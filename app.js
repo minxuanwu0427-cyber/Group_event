@@ -269,6 +269,9 @@ function renderRoomsTab() {
   html += '</div>';
 
   if (sub === "room") {
+    const accommodationBlock = e.infoBlocks.find(b => b.id === "i1");
+    if (accommodationBlock) html += renderInfoBlock(accommodationBlock);
+
     html += '<div class="card card-bordered">';
     html += '<div class="row"><h2>房間分配</h2>' + (org ? '<button class="btn ghost small" data-act="addRoom">＋新增房間</button>' : '') + '</div>';
     if (e.rooms.length === 0) html += '<p class="empty-hint">尚未建立房間</p>';
@@ -472,26 +475,29 @@ function renderPrepTab() {
 }
 
 /* -------------------------------- 行程 / 住宿注意事項 -------------------------------- */
+function renderInfoBlock(b) {
+  const org = canManage();
+  const editing = state.ui.infoEditId === b.id;
+  let html = '<div class="card card-bordered">';
+  html += '<div class="row"><h2>' + esc(b.title) + '</h2>' +
+    (org ? '<button class="btn ghost small" data-act="toggleInfoEdit" data-id="' + b.id + '">' + (editing ? "完成" : "編輯") + '</button>' : '') + '</div>';
+  if (editing) {
+    html += '<input class="input" style="margin:8px 0;" data-act="editInfoTitle" data-id="' + b.id + '" value="' + esc(b.title) + '">';
+    html += '<textarea class="input" rows="5" data-act="editInfoContent" data-id="' + b.id + '">' + esc(b.content) + '</textarea>';
+    html += '<button class="btn danger small" style="margin-top:8px;" data-act="deleteInfoBlock" data-id="' + b.id + '">刪除這個區塊</button>';
+  } else {
+    html += b.content
+      ? '<p style="margin-top:8px;font-size:14px;white-space:pre-wrap;">' + esc(b.content) + '</p>'
+      : '<p class="empty-hint">尚未填寫</p>';
+  }
+  html += '</div>';
+  return html;
+}
 function renderInfoTab() {
   const e = state.event;
   const org = canManage();
   let html = "";
-  e.infoBlocks.forEach(b => {
-    const editing = state.ui.infoEditId === b.id;
-    html += '<div class="card card-bordered">';
-    html += '<div class="row"><h2>' + esc(b.title) + '</h2>' +
-      (org ? '<button class="btn ghost small" data-act="toggleInfoEdit" data-id="' + b.id + '">' + (editing ? "完成" : "編輯") + '</button>' : '') + '</div>';
-    if (editing) {
-      html += '<input class="input" style="margin:8px 0;" data-act="editInfoTitle" data-id="' + b.id + '" value="' + esc(b.title) + '">';
-      html += '<textarea class="input" rows="5" data-act="editInfoContent" data-id="' + b.id + '">' + esc(b.content) + '</textarea>';
-      html += '<button class="btn danger small" style="margin-top:8px;" data-act="deleteInfoBlock" data-id="' + b.id + '">刪除這個區塊</button>';
-    } else {
-      html += b.content
-        ? '<p style="margin-top:8px;font-size:14px;white-space:pre-wrap;">' + esc(b.content) + '</p>'
-        : '<p class="empty-hint">尚未填寫</p>';
-    }
-    html += '</div>';
-  });
+  e.infoBlocks.filter(b => b.id !== "i1").forEach(b => { html += renderInfoBlock(b); });
   if (org) html += '<p style="text-align:center;"><button class="btn secondary small" data-act="addInfoBlock">＋新增區塊</button></p>';
   return html;
 }
@@ -604,7 +610,7 @@ function renderExpenseModal() {
 /* -------------------------------- Tabbar / Shell -------------------------------- */
 const TAB_ICONS = {
   overview: '<path d="M3 10.5 12 3l9 7.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 9.5V21h14V9.5" stroke-linecap="round" stroke-linejoin="round"/>',
-  rooms: '<path d="M3 18v-6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v6" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 18h18" stroke-linecap="round"/><path d="M7 10V7a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v3" stroke-linecap="round" stroke-linejoin="round"/>',
+  rooms: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87" stroke-linecap="round" stroke-linejoin="round"/><path d="M16 3.13a4 4 0 0 1 0 7.75" stroke-linecap="round" stroke-linejoin="round"/>',
   prep: '<rect x="3" y="3" width="18" height="18" rx="4"/><path d="m8 12 3 3 5-6" stroke-linecap="round" stroke-linejoin="round"/>',
   info: '<rect x="3" y="4" width="18" height="17" rx="3"/><path d="M16 2v4M8 2v4M3 9h18" stroke-linecap="round"/>',
   expense: '<path d="M3 7a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" stroke-linecap="round" stroke-linejoin="round"/><path d="M16 12h2" stroke-linecap="round"/>'
