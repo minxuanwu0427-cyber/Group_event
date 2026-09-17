@@ -23,6 +23,7 @@ const DEFAULT_EVENT = {
   arrivals: {},           // personId -> { method, eta }
   prepItems: [],
   prepMemo: "",           // 主揪備忘錄，自由文字
+  announcement: "",       // 頂部跑馬燈公告文字
   infoBlocks: [
     { id: "i1", title: "住宿注意事項", content: "" },
     { id: "i2", title: "行程重點", content: "" }
@@ -61,6 +62,29 @@ function toSlashDate(s) { return (s || "").trim().replace(/-/g, "/"); }
 function toMonthDay(s) {
   const parts = toSlashDate(s).split("/");
   return parts.length === 3 ? parts[1] + "/" + parts[2] : toSlashDate(s);
+}
+function computeCountdown(td) {
+  if (!td || !td.start) return "";
+  const start = parseDateAny(td.start);
+  if (isNaN(start.getTime())) return "";
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  start.setHours(0, 0, 0, 0);
+  const diff = Math.round((start - today) / 86400000);
+  if (diff > 0) return "D-" + diff;
+  if (diff === 0) return "D-DAY";
+  return "D+" + Math.abs(diff);
+}
+function renderMarquee() {
+  const e = state.event;
+  const countdown = computeCountdown(e.tripDates);
+  const text = [countdown, e.announcement].filter(Boolean).join("．");
+  const editable = canManage();
+  if (!text) {
+    if (!editable) return "";
+    return '<div class="marquee-bar marquee-empty" data-act="editAnnouncement" style="cursor:pointer;">點此新增公告</div>';
+  }
+  return '<div class="marquee-bar" ' + (editable ? 'data-act="editAnnouncement" style="cursor:pointer;"' : '') + '><span>' + esc(text) + '</span></div>';
 }
 function parseDateAny(s) { return new Date((s || "").trim().replace(/\//g, "-")); }
 function formatTripDates(td) {
@@ -106,6 +130,7 @@ function normalizeEvent(data) {
   e.vehicleAssignments = data.vehicleAssignments || {};
   e.arrivals = data.arrivals || {};
   e.prepMemo = data.prepMemo || "";
+  e.announcement = data.announcement || "";
   e.prepItems = Array.isArray(data.prepItems) ? data.prepItems : DEFAULT_EVENT.prepItems;
   e.prepItems = e.prepItems.map(it => {
     if (Array.isArray(it.assigneeIds)) return it;
@@ -311,7 +336,7 @@ function renderOverview() {
   if (state.ui.rosterOpen) {
     html += '<div class="roster-grid">';
     roster.forEach(p => {
-      html += '<div class="roster-item"><div class="avatar small">' + avatarText(p) + '</div><span class="name">' + esc(p.name) + (p.isOrganizer ? ' 🙋🏻\u200d♂️' : '') + '</span></div>';
+      html += '<div class="roster-item"><div class="avatar small">' + avatarText(p) + '</div><span class="name">' + esc(p.name) + '</span></div>';
     });
     html += '</div>';
     if (canManage()) {
@@ -320,7 +345,7 @@ function renderOverview() {
         '<div><button class="btn ghost small" data-act="openOrganizerModal">設為主揪</button>' +
         '<button class="btn ghost small" data-act="addPersonPrompt">＋新增團員</button></div></div>';
       roster.forEach(p => {
-        html += '<div class="person-line"><div class="avatar small">' + avatarText(p) + '</div><span class="name">' + esc(p.name) + (p.isOrganizer ? ' 🙋🏻\u200d♂️主揪' : '') + '</span>';
+        html += '<div class="person-line"><div class="avatar small">' + avatarText(p) + '</div><span class="name">' + esc(p.name) + (p.isOrganizer ? ' 主揪' : '') + '</span>';
         html += '<button class="btn ghost small" data-act="editPerson" data-id="' + p.id + '" style="padding:4px 8px;">' +
           '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button>';
         if (p.id !== state.currentUserId) {
@@ -794,6 +819,7 @@ function render() {
     '<div class="avatar-badge">' + avatarText(me()) + '</div>' +
     (isOrganizer() ? '<button class="btn ghost small" style="padding:2px 8px;font-size:11px;" data-act="toggleViewMode">' + (state.ui.viewMode ? "編輯" : "檢視") + '</button>' : '') +
     '</div></div>';
+  html += renderMarquee();
   html += body;
   if (state.ui.tab === "expense") html += '<button class="fab" data-act="openExpenseModal">＋</button>';
   html += renderTabbar();
@@ -865,6 +891,9 @@ document.addEventListener("click", e => {
   } else if (act === "editTitle") {
     const t = window.prompt("旅行名稱", state.event.title);
     if (t && t.trim()) mutate(ev => { ev.title = t.trim(); });
+  } else if (act === "editAnnouncement") {
+    const t = window.prompt("公告內容（會顯示在跑馬燈，留空可清除）", state.event.announcement || "");
+    if (t !== null) mutate(ev => { ev.announcement = t.trim(); });
   } else if (act === "editTripDates") {
     const ev0 = state.event;
     const start = window.prompt("出發日期（格式 YYYY/MM/DD，例如 2026/10/18）", toSlashDate(ev0.tripDates.start)) ?? ev0.tripDates.start;
