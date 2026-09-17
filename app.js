@@ -31,7 +31,7 @@ const state = {
   eventCode: localStorage.getItem(CODE_KEY) || null,
   event: undefined,       // undefined=載入中 / null=此代號尚未建立 / object=正常資料
   currentUserId: null,
-  ui: { tab: "overview", expenseModal: false, infoEditId: null, rosterOpen: false, roomsSubTab: "room", viewMode: false, arrivalModalFor: null, arrivalMethodTemp: null, arrivalsOpen: false, balancesOpen: false, roomsCardOpen: false, vehiclesCardOpen: false, expensesOpen: false }
+  ui: { tab: "overview", expenseModal: false, infoEditId: null, rosterOpen: false, roomsSubTab: "room", viewMode: false, arrivalModalFor: null, arrivalMethodTemp: null, arrivalsOpen: false, balancesOpen: false, unassignedRoomsOpen: false, unassignedVehiclesOpen: false, expensesOpen: false }
 };
 
 function uid() { return "id_" + Math.random().toString(36).slice(2, 10); }
@@ -270,104 +270,102 @@ function renderRoomsTab() {
 
   if (sub === "room") {
     html += '<div class="card card-bordered">';
-    html += '<div class="row"><div data-act="toggleRoomsCard" style="cursor:pointer;display:flex;align-items:center;gap:8px;">' +
-      '<h2>房間分配</h2><span class="chip neutral">' + (state.ui.roomsCardOpen ? "收合" : "展開") + '</span></div>' +
-      (org ? '<button class="btn ghost small" data-act="addRoom">＋新增房間</button>' : '') + '</div>';
-    if (e.rooms.length === 0) {
-      html += '<p class="empty-hint">尚未建立房間</p>';
-    } else {
-      const myRoomId = e.roomAssignments[state.currentUserId];
-      const roomsToShow = state.ui.roomsCardOpen ? e.rooms : e.rooms.filter(r => r.id === myRoomId);
-      if (!roomsToShow.length) html += '<p class="empty-hint">尚未分房</p>';
-      roomsToShow.forEach(r => {
-        const members = e.people.filter(p => e.roomAssignments[p.id] === r.id);
-        const full = r.capacity && members.length >= r.capacity;
-        html += '<div class="room-card' + (full ? ' full' : '') + '">';
-        html += '<div class="row"><strong>' + esc(r.name) + '</strong>' +
-          '<span class="chip' + (full ? ' warn' : ' neutral') + '">' + members.length + (r.capacity ? "/" + r.capacity : "") + ' 人</span></div>';
-        if (org) html += '<div style="margin-top:6px;"><button class="btn ghost small" data-act="editRoom" data-id="' + r.id + '">編輯</button>' +
-          '<button class="btn ghost small" data-act="deleteRoom" data-id="' + r.id + '">刪除</button></div>';
-        if (members.length) {
-          html += '<div class="chip-grid grid-4" style="margin-top:8px;">';
-          members.forEach(p => {
-            html += '<div class="person-chip"><div class="avatar small">' + avatarText(p) + '</div><span class="name">' + esc(p.name) +
-              (canEditPerson(p.id) ? ' <a class="x-remove" data-act="unassignRoom" data-id="' + p.id + '">✕</a>' : '') + '</span></div>';
-          });
-          html += '</div>';
-        }
+    html += '<div class="row"><h2>房間分配</h2>' + (org ? '<button class="btn ghost small" data-act="addRoom">＋新增房間</button>' : '') + '</div>';
+    if (e.rooms.length === 0) html += '<p class="empty-hint">尚未建立房間</p>';
+    e.rooms.forEach(r => {
+      const members = e.people.filter(p => e.roomAssignments[p.id] === r.id);
+      const full = r.capacity && members.length >= r.capacity;
+      const mine = e.roomAssignments[state.currentUserId] === r.id;
+      html += '<div class="room-card' + (full ? ' full' : '') + (mine ? ' mine' : '') + '">';
+      html += '<div class="row"><strong>' + esc(r.name) + (mine ? ' <span class="chip">我在這</span>' : '') + '</strong>' +
+        '<span class="chip' + (full ? ' warn' : ' neutral') + '">' + members.length + (r.capacity ? "/" + r.capacity : "") + ' 人</span></div>';
+      if (org) html += '<div style="margin-top:6px;"><button class="btn ghost small" data-act="editRoom" data-id="' + r.id + '">編輯</button>' +
+        '<button class="btn ghost small" data-act="deleteRoom" data-id="' + r.id + '">刪除</button></div>';
+      if (members.length) {
+        html += '<div class="chip-grid grid-4" style="margin-top:8px;">';
+        members.forEach(p => {
+          html += '<div class="person-chip"><div class="avatar small">' + avatarText(p) + '</div><span class="name">' + esc(p.name) +
+            (canEditPerson(p.id) ? ' <a class="x-remove" data-act="unassignRoom" data-id="' + p.id + '">✕</a>' : '') + '</span></div>';
+        });
         html += '</div>';
-      });
-    }
-    html += '</div>';
-
-    const unassigned = e.people.filter(p => !e.roomAssignments[p.id]);
-    html += '<div class="card card-bordered card-dashed">';
-    html += '<h2 style="margin-bottom:8px;">未分房（' + unassigned.length + '/' + e.people.length + '）</h2>';
-    if (!unassigned.length) html += '<p class="empty-hint">大家都分好房間了</p>';
-    unassigned.forEach(p => {
-      html += '<div class="person-line"><div class="avatar small">' + avatarText(p) + '</div><span class="name">' + esc(p.name) + (p.isOrganizer ? ' 🙋🏻\u200d♂️' : '') + '</span>';
-      if (canEditPerson(p.id) && e.rooms.length) {
-        html += '<select class="input input-compact" style="width:auto;" data-act="assignRoom" data-id="' + p.id + '">';
-        html += '<option value="">選房間</option>';
-        e.rooms.forEach(r => { html += '<option value="' + r.id + '">' + esc(r.name) + '</option>'; });
-        html += '</select>';
-      } else if (!e.rooms.length) {
-        html += '<span class="empty-hint" style="padding:0;">尚無房間</span>';
       }
       html += '</div>';
     });
     html += '</div>';
+
+    const unassigned = e.people.filter(p => !e.roomAssignments[p.id]);
+    if (unassigned.length) {
+      html += '<div class="card card-bordered card-dashed">';
+      html += '<div class="row" data-act="toggleUnassignedRooms" style="cursor:pointer;">' +
+        '<h2>未分房（' + unassigned.length + '/' + e.people.length + '）</h2><span class="chip neutral">' + (state.ui.unassignedRoomsOpen ? "收合" : "展開") + '</span></div>';
+      if (state.ui.unassignedRoomsOpen) {
+        html += '<div style="margin-top:8px;">';
+        unassigned.forEach(p => {
+          html += '<div class="person-line"><div class="avatar small">' + avatarText(p) + '</div><span class="name">' + esc(p.name) + (p.isOrganizer ? ' 🙋🏻\u200d♂️' : '') + '</span>';
+          if (canEditPerson(p.id) && e.rooms.length) {
+            html += '<select class="input input-compact" style="width:auto;" data-act="assignRoom" data-id="' + p.id + '">';
+            html += '<option value="">選房間</option>';
+            e.rooms.forEach(r => { html += '<option value="' + r.id + '">' + esc(r.name) + '</option>'; });
+            html += '</select>';
+          } else if (!e.rooms.length) {
+            html += '<span class="empty-hint" style="padding:0;">尚無房間</span>';
+          }
+          html += '</div>';
+        });
+        html += '</div>';
+      }
+      html += '</div>';
+    }
   } else {
     html += renderTransportSection();
 
     html += '<div class="card card-bordered">';
-    html += '<div class="row"><div data-act="toggleVehiclesCard" style="cursor:pointer;display:flex;align-items:center;gap:8px;">' +
-      '<h2>座車分配</h2><span class="chip neutral">' + (state.ui.vehiclesCardOpen ? "收合" : "展開") + '</span></div>' +
-      (org ? '<button class="btn ghost small" data-act="addVehicle">＋新增座車</button>' : '') + '</div>';
-    if (e.vehicles.length === 0) {
-      html += '<p class="empty-hint">尚未建立座車</p>';
-    } else {
-      const myVehicleId = e.vehicleAssignments[state.currentUserId];
-      const vehiclesToShow = state.ui.vehiclesCardOpen ? e.vehicles : e.vehicles.filter(v => v.id === myVehicleId);
-      if (!vehiclesToShow.length) html += '<p class="empty-hint">尚未分配座車</p>';
-      vehiclesToShow.forEach(v => {
-        const members = e.people.filter(p => e.vehicleAssignments[p.id] === v.id);
-        const full = v.capacity && members.length >= v.capacity;
-        html += '<div class="room-card' + (full ? ' full' : '') + '">';
-        html += '<div class="row"><strong>' + esc(v.name) + '</strong>' +
-          '<span class="chip' + (full ? ' warn' : ' neutral') + '">' + members.length + (v.capacity ? "/" + v.capacity : "") + ' 人</span></div>';
-        if (org) html += '<div style="margin-top:6px;"><button class="btn ghost small" data-act="editVehicle" data-id="' + v.id + '">編輯</button>' +
-          '<button class="btn ghost small" data-act="deleteVehicle" data-id="' + v.id + '">刪除</button></div>';
-        if (members.length) {
-          html += '<div class="chip-grid grid-3" style="margin-top:8px;">';
-          members.forEach(p => {
-            html += '<div class="person-chip"><div class="avatar small">' + avatarText(p) + '</div><span class="name">' + esc(p.name) +
-              (canEditPerson(p.id) ? ' <a class="x-remove" data-act="unassignVehicle" data-id="' + p.id + '">✕</a>' : '') + '</span></div>';
-          });
-          html += '</div>';
-        }
+    html += '<div class="row"><h2>座車分配</h2>' + (org ? '<button class="btn ghost small" data-act="addVehicle">＋新增座車</button>' : '') + '</div>';
+    if (e.vehicles.length === 0) html += '<p class="empty-hint">尚未建立座車</p>';
+    e.vehicles.forEach(v => {
+      const members = e.people.filter(p => e.vehicleAssignments[p.id] === v.id);
+      const full = v.capacity && members.length >= v.capacity;
+      const mine = e.vehicleAssignments[state.currentUserId] === v.id;
+      html += '<div class="room-card' + (full ? ' full' : '') + (mine ? ' mine' : '') + '">';
+      html += '<div class="row"><strong>' + esc(v.name) + (mine ? ' <span class="chip">我在這</span>' : '') + '</strong>' +
+        '<span class="chip' + (full ? ' warn' : ' neutral') + '">' + members.length + (v.capacity ? "/" + v.capacity : "") + ' 人</span></div>';
+      if (org) html += '<div style="margin-top:6px;"><button class="btn ghost small" data-act="editVehicle" data-id="' + v.id + '">編輯</button>' +
+        '<button class="btn ghost small" data-act="deleteVehicle" data-id="' + v.id + '">刪除</button></div>';
+      if (members.length) {
+        html += '<div class="chip-grid grid-3" style="margin-top:8px;">';
+        members.forEach(p => {
+          html += '<div class="person-chip"><div class="avatar small">' + avatarText(p) + '</div><span class="name">' + esc(p.name) +
+            (canEditPerson(p.id) ? ' <a class="x-remove" data-act="unassignVehicle" data-id="' + p.id + '">✕</a>' : '') + '</span></div>';
+        });
         html += '</div>';
-      });
-    }
-    html += '</div>';
-
-    const unassignedV = e.people.filter(p => !e.vehicleAssignments[p.id]);
-    html += '<div class="card card-bordered card-dashed">';
-    html += '<h2 style="margin-bottom:8px;">未分配座車（' + unassignedV.length + '/' + e.people.length + '）</h2>';
-    if (!unassignedV.length) html += '<p class="empty-hint">大家都分好座車了</p>';
-    unassignedV.forEach(p => {
-      html += '<div class="person-line"><div class="avatar small">' + avatarText(p) + '</div><span class="name">' + esc(p.name) + '</span>';
-      if (canEditPerson(p.id) && e.vehicles.length) {
-        html += '<select class="input input-compact" style="width:auto;" data-act="assignVehicle" data-id="' + p.id + '">';
-        html += '<option value="">選座車</option>';
-        e.vehicles.forEach(v => { html += '<option value="' + v.id + '">' + esc(v.name) + '</option>'; });
-        html += '</select>';
-      } else if (!e.vehicles.length) {
-        html += '<span class="empty-hint" style="padding:0;">尚無座車</span>';
       }
       html += '</div>';
     });
     html += '</div>';
+
+    const unassignedV = e.people.filter(p => !e.vehicleAssignments[p.id]);
+    if (unassignedV.length) {
+      html += '<div class="card card-bordered card-dashed">';
+      html += '<div class="row" data-act="toggleUnassignedVehicles" style="cursor:pointer;">' +
+        '<h2>未分配座車（' + unassignedV.length + '/' + e.people.length + '）</h2><span class="chip neutral">' + (state.ui.unassignedVehiclesOpen ? "收合" : "展開") + '</span></div>';
+      if (state.ui.unassignedVehiclesOpen) {
+        html += '<div style="margin-top:8px;">';
+        unassignedV.forEach(p => {
+          html += '<div class="person-line"><div class="avatar small">' + avatarText(p) + '</div><span class="name">' + esc(p.name) + '</span>';
+          if (canEditPerson(p.id) && e.vehicles.length) {
+            html += '<select class="input input-compact" style="width:auto;" data-act="assignVehicle" data-id="' + p.id + '">';
+            html += '<option value="">選座車</option>';
+            e.vehicles.forEach(v => { html += '<option value="' + v.id + '">' + esc(v.name) + '</option>'; });
+            html += '</select>';
+          } else if (!e.vehicles.length) {
+            html += '<span class="empty-hint" style="padding:0;">尚無座車</span>';
+          }
+          html += '</div>';
+        });
+        html += '</div>';
+      }
+      html += '</div>';
+    }
   }
 
   return html;
@@ -697,10 +695,10 @@ document.addEventListener("click", e => {
     state.ui.balancesOpen = !state.ui.balancesOpen; render();
   } else if (act === "toggleArrivals") {
     state.ui.arrivalsOpen = !state.ui.arrivalsOpen; render();
-  } else if (act === "toggleRoomsCard") {
-    state.ui.roomsCardOpen = !state.ui.roomsCardOpen; render();
-  } else if (act === "toggleVehiclesCard") {
-    state.ui.vehiclesCardOpen = !state.ui.vehiclesCardOpen; render();
+  } else if (act === "toggleUnassignedRooms") {
+    state.ui.unassignedRoomsOpen = !state.ui.unassignedRoomsOpen; render();
+  } else if (act === "toggleUnassignedVehicles") {
+    state.ui.unassignedVehiclesOpen = !state.ui.unassignedVehiclesOpen; render();
   } else if (act === "toggleExpenses") {
     state.ui.expensesOpen = !state.ui.expensesOpen; render();
   } else if (act === "toggleRoster") {
