@@ -34,7 +34,7 @@ const state = {
   eventCode: localStorage.getItem(CODE_KEY) || null,
   event: undefined,       // undefined=載入中 / null=此代號尚未建立 / object=正常資料
   currentUserId: null,
-  ui: { tab: "overview", expenseModal: false, infoEditId: null, rosterOpen: false, roomsSubTab: "room", viewMode: false, arrivalModalFor: null, arrivalMethodTemp: null, arrivalsOpen: false, balancesOpen: false, unassignedRoomsOpen: false, unassignedVehiclesOpen: false, expensesOpen: false, settlementModalOpen: false, prepTaskModalFor: null, meetupOpen: false, meetupGroupModalFor: null, finalMeetupModalOpen: false }
+  ui: { tab: "overview", expenseModal: false, infoEditId: null, rosterOpen: false, roomsSubTab: "room", viewMode: false, arrivalModalFor: null, arrivalMethodTemp: null, arrivalsOpen: false, balancesOpen: false, unassignedRoomsOpen: false, unassignedVehiclesOpen: false, expensesOpen: false, settlementModalOpen: false, prepTaskModalFor: null, meetupOpen: false, meetupGroupModalFor: null, finalMeetupModalOpen: false, organizerModalOpen: false }
 };
 
 function uid() { return "id_" + Math.random().toString(36).slice(2, 10); }
@@ -270,6 +270,19 @@ function renderMeetupGroupModal() {
   html += '</div></div>';
   return html;
 }
+function renderOrganizerModal() {
+  const e = state.event;
+  let html = '<div class="modal-backdrop"><div class="modal-sheet">';
+  html += '<h2>設為主揪</h2>';
+  html += '<p style="font-size:13px;color:var(--color-text-soft);margin-bottom:10px;">勾選的人會成為主揪，可以編輯所有內容</p>';
+  e.people.forEach(p => {
+    html += '<label style="display:flex;align-items:center;gap:8px;padding:6px 0;font-size:14px;">' +
+      '<input type="checkbox" class="organizerCheck" value="' + p.id + '"' + (p.isOrganizer ? " checked" : "") + '> ' + esc(p.name) + '</label>';
+  });
+  html += '<button class="btn" style="width:100%;margin-top:10px;" data-act="submitOrganizers">儲存</button>';
+  html += '</div></div>';
+  return html;
+}
 function renderFinalMeetupModal() {
   const m = state.event.meetup;
   let html = '<div class="modal-backdrop"><div class="modal-sheet">';
@@ -303,13 +316,15 @@ function renderOverview() {
     html += '</div>';
     if (canManage()) {
       html += '<div class="divider"></div>';
-      html += '<div class="row"><span class="section-title" style="margin:0;">團員管理</span><button class="btn ghost small" data-act="addPersonPrompt">＋新增團員</button></div>';
+      html += '<div class="row"><span class="section-title" style="margin:0;">團員管理</span>' +
+        '<div><button class="btn ghost small" data-act="openOrganizerModal">設為主揪</button>' +
+        '<button class="btn ghost small" data-act="addPersonPrompt">＋新增團員</button></div></div>';
       roster.forEach(p => {
         html += '<div class="person-line"><div class="avatar small">' + avatarText(p) + '</div><span class="name">' + esc(p.name) + (p.isOrganizer ? ' 🙋🏻\u200d♂️主揪' : '') + '</span>';
-        html += '<button class="btn ghost small" data-act="editPerson" data-id="' + p.id + '">編輯</button>';
+        html += '<button class="btn ghost small" data-act="editPerson" data-id="' + p.id + '" style="padding:4px 8px;">' +
+          '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button>';
         if (p.id !== state.currentUserId) {
-          html += '<button class="btn ghost small" data-act="toggleOrganizer" data-id="' + p.id + '">' + (p.isOrganizer ? '取消主揪' : '設為主揪') + '</button>';
-          html += '<button class="btn ghost small" data-act="removePerson" data-id="' + p.id + '">移除</button>';
+          html += '<button class="btn ghost small" data-act="removePerson" data-id="' + p.id + '">✕</button>';
         }
         html += '</div>';
       });
@@ -788,13 +803,14 @@ function render() {
   if (state.ui.prepTaskModalFor) html += renderPrepTaskModal();
   if (state.ui.meetupGroupModalFor) html += renderMeetupGroupModal();
   if (state.ui.finalMeetupModalOpen) html += renderFinalMeetupModal();
+  if (state.ui.organizerModalOpen) html += renderOrganizerModal();
   app.innerHTML = html;
 }
 
 /* -------------------------------- 事件委派 -------------------------------- */
 document.addEventListener("click", e => {
   if (e.target.classList && e.target.classList.contains("modal-backdrop")) {
-    state.ui.expenseModal = false; state.ui.arrivalModalFor = null; state.ui.arrivalMethodTemp = null; state.ui.settlementModalOpen = false; state.ui.prepTaskModalFor = null; state.ui.meetupGroupModalFor = null; state.ui.finalMeetupModalOpen = false; render(); return;
+    state.ui.expenseModal = false; state.ui.arrivalModalFor = null; state.ui.arrivalMethodTemp = null; state.ui.settlementModalOpen = false; state.ui.prepTaskModalFor = null; state.ui.meetupGroupModalFor = null; state.ui.finalMeetupModalOpen = false; state.ui.organizerModalOpen = false; render(); return;
   }
   const el = e.target.closest("[data-act]");
   if (!el) return;
@@ -929,8 +945,13 @@ document.addEventListener("click", e => {
     const name = window.prompt("姓名", p.name) ?? p.name;
     const nickname = window.prompt("簡稱（顯示在頭像上）", p.nickname || name.slice(0, 2)) ?? p.nickname;
     mutate(ev => { const pp = ev.people.find(x => x.id === id); pp.name = name; pp.nickname = nickname; });
-  } else if (act === "toggleOrganizer") {
-    mutate(ev => { const p = ev.people.find(x => x.id === id); p.isOrganizer = !p.isOrganizer; });
+  } else if (act === "openOrganizerModal") {
+    state.ui.organizerModalOpen = true; render();
+  } else if (act === "submitOrganizers") {
+    const checkedIds = Array.from(document.querySelectorAll(".organizerCheck:checked")).map(x => x.value);
+    if (!checkedIds.length) { alert("至少要保留一位主揪"); return; }
+    mutate(ev => { ev.people.forEach(p => { p.isOrganizer = checkedIds.includes(p.id); }); });
+    state.ui.organizerModalOpen = false; render();
   } else if (act === "removePerson") {
     if (!confirm("確定移除這位團員？")) return;
     mutate(ev => {
