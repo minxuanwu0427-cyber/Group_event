@@ -32,7 +32,7 @@ const state = {
   eventCode: localStorage.getItem(CODE_KEY) || null,
   event: undefined,       // undefined=載入中 / null=此代號尚未建立 / object=正常資料
   currentUserId: null,
-  ui: { tab: "overview", expenseModal: false, infoEditId: null, rosterOpen: false, roomsSubTab: "room", viewMode: false, arrivalModalFor: null, arrivalMethodTemp: null, arrivalsOpen: false, balancesOpen: false, unassignedRoomsOpen: false, unassignedVehiclesOpen: false, expensesOpen: false, settlementModalOpen: false }
+  ui: { tab: "overview", expenseModal: false, infoEditId: null, rosterOpen: false, roomsSubTab: "room", viewMode: false, arrivalModalFor: null, arrivalMethodTemp: null, arrivalsOpen: false, balancesOpen: false, unassignedRoomsOpen: false, unassignedVehiclesOpen: false, expensesOpen: false, settlementModalOpen: false, prepTaskModalFor: null }
 };
 
 function uid() { return "id_" + Math.random().toString(36).slice(2, 10); }
@@ -437,7 +437,7 @@ function renderPrepTab() {
   const e = state.event;
   const org = canManage();
   let html = '<div class="card card-bordered">';
-  html += '<div class="row"><h2>行前分工</h2>' + (org ? '<button class="btn ghost small" data-act="addPrepTask">＋新增任務</button>' : '') + '</div>';
+  html += '<div class="row"><h2>行前分工</h2>' + (org ? '<button class="btn ghost small" data-act="openPrepTaskModal">＋新增任務</button>' : '') + '</div>';
   if (!e.prepItems.length) html += '<p class="empty-hint">尚未安排工作項目</p>';
   const myId = state.currentUserId;
   const items = e.prepItems.slice().sort((a, b) => {
@@ -448,8 +448,7 @@ function renderPrepTab() {
   items.forEach(it => {
     const assignees = e.people.filter(p => (it.assigneeIds || []).includes(p.id));
     const isMine = (it.assigneeIds || []).includes(myId);
-    html += '<div style="padding:8px 0;border-bottom:1px solid var(--color-divider);">';
-    html += '<div class="row" style="align-items:center;flex-wrap:wrap;">';
+    html += '<div class="row" style="padding:8px 0;border-bottom:1px solid var(--color-divider);flex-wrap:wrap;">';
     html += '<span style="flex:1;font-size:14px;min-width:120px;">' + (isMine ? "★ " : "") + esc(it.label) + '</span>';
     if (assignees.length) {
       assignees.forEach(p => {
@@ -459,26 +458,38 @@ function renderPrepTab() {
     } else {
       html += '<span class="empty-hint" style="padding:0;margin-left:6px;">尚未分配</span>';
     }
-    if (org) html += '<button class="btn ghost small" data-act="deletePrepTask" data-id="' + it.id + '">刪除</button>';
-    html += '</div>';
     if (org) {
-      html += '<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:10px;">';
-      e.people.forEach(p => {
-        const checked = (it.assigneeIds || []).includes(p.id);
-        html += '<label style="display:flex;align-items:center;gap:4px;font-size:12.5px;">' +
-          '<input type="checkbox" data-act="togglePrepAssignee" data-id="' + it.id + '" data-pid="' + p.id + '"' + (checked ? " checked" : "") + '> ' + esc(p.name) + '</label>';
-      });
-      html += '</div>';
+      html += '<button class="btn ghost small" data-act="openPrepTaskModal" data-id="' + it.id + '">✎</button>';
+      html += '<button class="btn ghost small" data-act="deletePrepTask" data-id="' + it.id + '">✕</button>';
     }
     html += '</div>';
   });
   html += '</div>';
 
   html += '<div class="card card-bordered">';
-  html += '<h2 style="margin-bottom:8px;">📝 主揪備忘錄</h2>';
+  html += '<h2 style="margin-bottom:8px;">備忘錄</h2>';
   const memoRows = Math.max(3, (e.prepMemo || "").split("\n").length + 1);
   html += '<textarea class="input" rows="' + memoRows + '" data-act="editPrepMemo" placeholder="給自己的提醒事項…" style="overflow:hidden;resize:none;" oninput="this.style.height=\'auto\';this.style.height=this.scrollHeight+\'px\';">' + esc(e.prepMemo || "") + '</textarea>';
   html += '</div>';
+  return html;
+}
+function renderPrepTaskModal() {
+  const e = state.event;
+  const taskId = state.ui.prepTaskModalFor;
+  const isNew = taskId === "new";
+  const task = isNew ? null : e.prepItems.find(it => it.id === taskId);
+  const assigneeIds = task ? (task.assigneeIds || []) : [];
+  let html = '<div class="modal-backdrop"><div class="modal-sheet">';
+  html += '<h2>' + (isNew ? "新增任務" : "編輯任務") + '</h2>';
+  html += '<div class="form-field"><label>任務內容</label><input class="input" id="prepTaskLabel" placeholder="例如：租車、訂餐廳" value="' + esc(task ? task.label : "") + '"></div>';
+  html += '<div class="form-field"><label>指派給</label>';
+  e.people.forEach(p => {
+    html += '<label style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:14px;">' +
+      '<input type="checkbox" class="prepTaskAssignee" value="' + p.id + '"' + (assigneeIds.includes(p.id) ? " checked" : "") + '> ' + esc(p.name) + '</label>';
+  });
+  html += '</div>';
+  html += '<button class="btn" style="width:100%;" data-act="submitPrepTask" data-id="' + (isNew ? "" : taskId) + '">儲存</button>';
+  html += '</div></div>';
   return html;
 }
 
@@ -491,7 +502,8 @@ function renderInfoBlock(b) {
     (org ? '<button class="btn ghost small" data-act="toggleInfoEdit" data-id="' + b.id + '">' + (editing ? "完成" : "編輯") + '</button>' : '') + '</div>';
   if (editing) {
     html += '<input class="input" style="margin:8px 0;" data-act="editInfoTitle" data-id="' + b.id + '" value="' + esc(b.title) + '">';
-    html += '<textarea class="input" rows="5" data-act="editInfoContent" data-id="' + b.id + '">' + esc(b.content) + '</textarea>';
+    const rows = Math.max(8, (b.content || "").split("\n").length + 2);
+    html += '<textarea class="input" rows="' + rows + '" data-act="editInfoContent" data-id="' + b.id + '" style="overflow:hidden;" oninput="this.style.height=\'auto\';this.style.height=this.scrollHeight+\'px\';">' + esc(b.content) + '</textarea>';
     html += '<button class="btn danger small" style="margin-top:8px;" data-act="deleteInfoBlock" data-id="' + b.id + '">刪除這個區塊</button>';
   } else {
     html += b.content
@@ -553,14 +565,14 @@ function renderExpenseTab() {
 
   let html = '<div class="card card-bordered">';
   html += '<h2 style="margin-bottom:10px;">目前費用</h2>';
-  html += '<div class="row" style="padding:4px 0;"><span style="font-size:14px;">團體總花費</span><span style="font-weight:700;">NT$ ' + fmtMoney(total) + '</span></div>';
-  html += '<div class="row" style="padding:4px 0;"><span style="font-size:14px;">我的結算</span><span class="amt ' + (myBalance >= 0 ? "pos" : "neg") + '">' + (myBalance >= 0 ? "應收 " : "應付 ") + 'NT$ ' + fmtMoney(Math.abs(myBalance)) + '</span></div>';
+  html += '<div class="row" style="padding:4px 0;"><span style="font-size:14px;">團體總花費</span><span>NT$ ' + fmtMoney(total) + '</span></div>';
+  html += '<div class="row" style="padding:4px 0;"><span style="font-size:14px;">我的結算</span><span class="amt ' + (myBalance >= 0 ? "pos" : "neg") + '" style="font-weight:700;">' + (myBalance >= 0 ? "應收 " : "應付 ") + 'NT$ ' + fmtMoney(Math.abs(myBalance)) + '</span></div>';
   html += '<button class="btn secondary" style="width:100%;margin-top:10px;" data-act="openSettlementModal">結算明細</button>';
   html += '</div>';
 
   html += '<div class="card card-bordered">';
   html += '<div class="row" data-act="toggleExpenses" style="cursor:pointer;">' +
-    '<h2>花費紀錄（總計 NT$ ' + fmtMoney(total) + '）</h2><span class="chip neutral">' + (state.ui.expensesOpen ? "收合" : "展開") + '</span></div>';
+    '<h2>花費紀錄</h2><span class="chip neutral">' + (state.ui.expensesOpen ? "收合" : "展開") + '</span></div>';
   const allExpenses = [...e.expenses].reverse();
   const expensesToShow = state.ui.expensesOpen ? allExpenses : allExpenses.filter(ex => ex.payerId === state.currentUserId || (ex.splitAmong || []).includes(state.currentUserId));
   if (!e.expenses.length) html += '<p class="empty-hint">還沒有任何花費紀錄</p>';
@@ -633,7 +645,7 @@ const TAB_ICONS = {
   rooms: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87" stroke-linecap="round" stroke-linejoin="round"/><path d="M16 3.13a4 4 0 0 1 0 7.75" stroke-linecap="round" stroke-linejoin="round"/>',
   prep: '<rect x="3" y="3" width="18" height="18" rx="4"/><path d="m8 12 3 3 5-6" stroke-linecap="round" stroke-linejoin="round"/>',
   info: '<rect x="3" y="4" width="18" height="17" rx="3"/><path d="M16 2v4M8 2v4M3 9h18" stroke-linecap="round"/>',
-  expense: '<path d="M3 7a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" stroke-linecap="round" stroke-linejoin="round"/><path d="M16 12h2" stroke-linecap="round"/>'
+  expense: '<text x="12" y="17" font-size="15" font-weight="700" text-anchor="middle" stroke="none" fill="currentColor">$</text>'
 };
 const TABS = [
   { id: "overview", label: "總覽" },
@@ -682,13 +694,14 @@ function render() {
   if (state.ui.expenseModal) html += renderExpenseModal();
   if (state.ui.arrivalModalFor) html += renderArrivalModal();
   if (state.ui.settlementModalOpen) html += renderSettlementModal();
+  if (state.ui.prepTaskModalFor) html += renderPrepTaskModal();
   app.innerHTML = html;
 }
 
 /* -------------------------------- 事件委派 -------------------------------- */
 document.addEventListener("click", e => {
   if (e.target.classList && e.target.classList.contains("modal-backdrop")) {
-    state.ui.expenseModal = false; state.ui.arrivalModalFor = null; state.ui.arrivalMethodTemp = null; state.ui.settlementModalOpen = false; render(); return;
+    state.ui.expenseModal = false; state.ui.arrivalModalFor = null; state.ui.arrivalMethodTemp = null; state.ui.settlementModalOpen = false; state.ui.prepTaskModalFor = null; render(); return;
   }
   const el = e.target.closest("[data-act]");
   if (!el) return;
@@ -811,9 +824,18 @@ document.addEventListener("click", e => {
     });
   } else if (act === "setRoomsSubTab") {
     state.ui.roomsSubTab = el.dataset.v; render();
-  } else if (act === "addPrepTask") {
-    const label = window.prompt("工作內容（例如：租車、訂餐廳）"); if (!label) return;
-    mutate(ev => { ev.prepItems.push({ id: uid(), label, assigneeIds: [] }); });
+  } else if (act === "openPrepTaskModal") {
+    state.ui.prepTaskModalFor = id || "new"; render();
+  } else if (act === "submitPrepTask") {
+    const label = document.getElementById("prepTaskLabel").value.trim();
+    if (!label) { alert("請輸入任務內容"); return; }
+    const assigneeIds = Array.from(document.querySelectorAll(".prepTaskAssignee:checked")).map(x => x.value);
+    if (id) {
+      mutate(ev => { const it = ev.prepItems.find(x => x.id === id); if (it) { it.label = label; it.assigneeIds = assigneeIds; } });
+    } else {
+      mutate(ev => { ev.prepItems.push({ id: uid(), label, assigneeIds }); });
+    }
+    state.ui.prepTaskModalFor = null; render();
   } else if (act === "deletePrepTask") {
     mutate(ev => { ev.prepItems = ev.prepItems.filter(x => x.id !== id); });
   } else if (act === "toggleInfoEdit") {
@@ -866,14 +888,6 @@ document.addEventListener("change", e => {
   } else if (act === "assignVehicle") {
     const vehicleId = el.value;
     mutate(ev => { if (vehicleId) ev.vehicleAssignments[id] = vehicleId; else delete ev.vehicleAssignments[id]; });
-  } else if (act === "togglePrepAssignee") {
-    const pid = el.dataset.pid, checked = el.checked;
-    mutate(ev => {
-      const it = ev.prepItems.find(x => x.id === id); if (!it) return;
-      it.assigneeIds = it.assigneeIds || [];
-      if (checked && !it.assigneeIds.includes(pid)) it.assigneeIds.push(pid);
-      else if (!checked) it.assigneeIds = it.assigneeIds.filter(x => x !== pid);
-    });
   } else if (act === "arrivalMethodChange") {
     state.ui.arrivalMethodTemp = el.value; render();
   }
