@@ -32,7 +32,7 @@ const state = {
   eventCode: localStorage.getItem(CODE_KEY) || null,
   event: undefined,       // undefined=載入中 / null=此代號尚未建立 / object=正常資料
   currentUserId: null,
-  ui: { tab: "overview", expenseModal: false, infoEditId: null, rosterOpen: false, roomsSubTab: "room", viewMode: false, arrivalModalFor: null, arrivalMethodTemp: null, arrivalsOpen: false, unassignedRoomsOpen: false, unassignedVehiclesOpen: false, expensesOpen: false, settlementModalOpen: false }
+  ui: { tab: "overview", expenseModal: false, infoEditId: null, rosterOpen: false, roomsSubTab: "room", viewMode: false, arrivalModalFor: null, arrivalMethodTemp: null, arrivalsOpen: false, balancesOpen: false, unassignedRoomsOpen: false, unassignedVehiclesOpen: false, expensesOpen: false, settlementModalOpen: false }
 };
 
 function uid() { return "id_" + Math.random().toString(36).slice(2, 10); }
@@ -552,8 +552,8 @@ function renderExpenseTab() {
   const myBalance = balances[state.currentUserId] || 0;
 
   let html = '<div class="card card-bordered">';
-  html += '<h2 style="margin-bottom:10px;">目前費用總覽</h2>';
-  html += '<div class="row" style="padding:4px 0;"><span style="font-size:14px;">總花費</span><span style="font-weight:700;">NT$ ' + fmtMoney(total) + '</span></div>';
+  html += '<h2 style="margin-bottom:10px;">目前費用</h2>';
+  html += '<div class="row" style="padding:4px 0;"><span style="font-size:14px;">團體總花費</span><span style="font-weight:700;">NT$ ' + fmtMoney(total) + '</span></div>';
   html += '<div class="row" style="padding:4px 0;"><span style="font-size:14px;">我的結算</span><span class="amt ' + (myBalance >= 0 ? "pos" : "neg") + '">' + (myBalance >= 0 ? "應收 " : "應付 ") + 'NT$ ' + fmtMoney(Math.abs(myBalance)) + '</span></div>';
   html += '<button class="btn secondary" style="width:100%;margin-top:10px;" data-act="openSettlementModal">結算明細</button>';
   html += '</div>';
@@ -585,8 +585,10 @@ function renderSettlementModal() {
   const settlements = computeSettlements(balances);
   let html = '<div class="modal-backdrop"><div class="modal-sheet">';
   html += '<h2>結算明細</h2>';
-  html += '<div class="section-title">每人餘額</div>';
-  e.people.forEach(p => {
+  html += '<div class="row" data-act="toggleBalances" style="cursor:pointer;">' +
+    '<div class="section-title" style="margin:0;">每人餘額</div><span class="chip neutral">' + (state.ui.balancesOpen ? "收合" : "展開") + '</span></div>';
+  const peopleToShow = state.ui.balancesOpen ? e.people : e.people.filter(p => p.id === state.currentUserId);
+  peopleToShow.forEach(p => {
     const v = balances[p.id] || 0;
     html += '<div class="balance-row"><span>' + esc(p.name) + '</span>' +
       '<span class="amt ' + (v >= 0 ? "pos" : "neg") + '">' + (v >= 0 ? "應收 " : "應付 ") + 'NT$ ' + fmtMoney(Math.abs(v)) + '</span></div>';
@@ -722,6 +724,8 @@ document.addEventListener("click", e => {
     state.ui.viewMode = !state.ui.viewMode; render();
   } else if (act === "toggleArrivals") {
     state.ui.arrivalsOpen = !state.ui.arrivalsOpen; render();
+  } else if (act === "toggleBalances") {
+    state.ui.balancesOpen = !state.ui.balancesOpen; render();
   } else if (act === "toggleUnassignedRooms") {
     state.ui.unassignedRoomsOpen = !state.ui.unassignedRoomsOpen; render();
   } else if (act === "toggleUnassignedVehicles") {
