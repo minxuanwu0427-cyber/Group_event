@@ -459,7 +459,8 @@ function renderPrepTab() {
       html += '<span class="empty-hint" style="padding:0;margin-left:6px;">尚未分配</span>';
     }
     if (org) {
-      html += '<button class="btn ghost small" data-act="openPrepTaskModal" data-id="' + it.id + '">✎</button>';
+      html += '<button class="btn ghost small" data-act="openPrepTaskModal" data-id="' + it.id + '" style="padding:4px 8px;">' +
+        '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button>';
       html += '<button class="btn ghost small" data-act="deletePrepTask" data-id="' + it.id + '">✕</button>';
     }
     html += '</div>';
@@ -645,7 +646,7 @@ const TAB_ICONS = {
   rooms: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87" stroke-linecap="round" stroke-linejoin="round"/><path d="M16 3.13a4 4 0 0 1 0 7.75" stroke-linecap="round" stroke-linejoin="round"/>',
   prep: '<rect x="3" y="3" width="18" height="18" rx="4"/><path d="m8 12 3 3 5-6" stroke-linecap="round" stroke-linejoin="round"/>',
   info: '<rect x="3" y="4" width="18" height="17" rx="3"/><path d="M16 2v4M8 2v4M3 9h18" stroke-linecap="round"/>',
-  expense: '<text x="12" y="17" font-size="15" font-weight="700" text-anchor="middle" stroke="none" fill="currentColor">$</text>'
+  expense: '<path d="M12 2v20" stroke-linecap="round"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" stroke-linecap="round" stroke-linejoin="round"/>'
 };
 const TABS = [
   { id: "overview", label: "總覽" },
