@@ -57,6 +57,10 @@ function personName(id) {
 function canEditPerson(pid) { return canManage() || pid === state.currentUserId; }
 
 function toSlashDate(s) { return (s || "").trim().replace(/-/g, "/"); }
+function toMonthDay(s) {
+  const parts = toSlashDate(s).split("/");
+  return parts.length === 3 ? parts[1] + "/" + parts[2] : toSlashDate(s);
+}
 function parseDateAny(s) { return new Date((s || "").trim().replace(/\//g, "-")); }
 function formatTripDates(td) {
   const gap = "\u00A0\u00A0\u00A0"; // 用不換行空白隔開日期跟天數說明，較易讀
@@ -194,45 +198,46 @@ function renderMeetupCard() {
   const myId = state.currentUserId;
   const groups = e.meetupGroups || [];
   const groupsToShow = state.ui.meetupOpen ? groups : groups.filter(g => (g.memberIds || []).includes(myId));
+  const showGroupsBlock = state.ui.meetupOpen || groupsToShow.length > 0 || org;
 
   let html = '<div class="card card-bordered">';
   html += '<div class="row" data-act="toggleMeetup" style="cursor:pointer;">' +
     '<h2>集合資訊</h2><span class="chip neutral">' + (state.ui.meetupOpen ? "收合" : "展開") + '</span></div>';
 
-  if (org) html += '<div style="margin-top:8px;"><button class="btn ghost small" data-act="openMeetupGroupModal">＋新增分組集合</button></div>';
+  if (showGroupsBlock) {
+    if (org) html += '<div style="margin-top:8px;"><button class="btn ghost small" data-act="openMeetupGroupModal">＋新增分組集合</button></div>';
 
-  if (!groups.length) {
-    html += '<p class="empty-hint" style="padding:8px 0;">尚未設定分組集合</p>';
-  } else if (!groupsToShow.length) {
-    html += '<p class="empty-hint" style="padding:8px 0;">你目前沒有被安排在任何分組</p>';
-  } else {
-    groupsToShow.forEach(g => {
-      const members = e.people.filter(p => (g.memberIds || []).includes(p.id));
-      html += '<div class="room-card" style="margin-top:8px;">';
-      html += '<div class="row" style="align-items:center;flex-wrap:wrap;">';
-      html += '<strong style="flex:1;">' + esc(g.title || "集合分組") + '</strong>';
-      members.forEach(p => { html += '<div class="avatar small" style="margin-left:4px;">' + avatarText(p) + '</div>'; });
-      html += '</div>';
-      if (g.date || g.time || g.location) {
-        html += '<div class="row" style="margin-top:6px;font-size:13px;">';
-        html += '<span>🕒 ' + esc(toSlashDate(g.date) || "未定") + ' ' + esc(g.time || "") + '</span>';
-        html += '<span>📍 ' + esc(g.location || "未定") + '</span>';
+    if (!groups.length) {
+      html += '<p class="empty-hint" style="padding:8px 0;">尚未設定分組集合</p>';
+    } else if (!groupsToShow.length) {
+      html += '<p class="empty-hint" style="padding:8px 0;">你目前沒有被安排在任何分組</p>';
+    } else {
+      groupsToShow.forEach(g => {
+        const members = e.people.filter(p => (g.memberIds || []).includes(p.id));
+        html += '<div class="room-card" style="margin-top:8px;">';
+        html += '<div class="row" style="align-items:center;flex-wrap:wrap;">';
+        html += '<strong style="flex:1;">' + esc(g.title || "集合分組") + '</strong>';
+        html += '<div style="display:flex;">';
+        members.forEach((p, i) => { html += '<div class="avatar small" style="margin-left:' + (i > 0 ? "-10px" : "0") + ';box-shadow:0 0 0 2px var(--color-surface, #fff);">' + avatarText(p) + '</div>'; });
         html += '</div>';
-      }
-      if (g.note) html += '<p style="margin-top:4px;font-size:12.5px;color:var(--color-text-soft);white-space:pre-wrap;">' + esc(g.note) + '</p>';
-      if (org) html += '<div style="margin-top:6px;"><button class="btn ghost small" data-act="openMeetupGroupModal" data-id="' + g.id + '">編輯</button>' +
-        '<button class="btn ghost small" data-act="deleteMeetupGroup" data-id="' + g.id + '">刪除</button></div>';
-      html += '</div>';
-    });
+        html += '</div>';
+        if (g.date || g.time || g.location) {
+          html += '<p style="margin-top:6px;font-size:13px;">🕒 ' + esc(toMonthDay(g.date) || "未定") + ' ' + esc(g.time || "") + '　📍 ' + esc(g.location || "未定") + '</p>';
+        }
+        if (g.note) html += '<p style="margin-top:4px;font-size:12.5px;color:var(--color-text-soft);white-space:pre-wrap;">' + esc(g.note) + '</p>';
+        if (org) html += '<div style="margin-top:6px;"><button class="btn ghost small" data-act="openMeetupGroupModal" data-id="' + g.id + '">編輯</button>' +
+          '<button class="btn ghost small" data-act="deleteMeetupGroup" data-id="' + g.id + '">刪除</button></div>';
+        html += '</div>';
+      });
+    }
+    html += '<div class="divider"></div>';
   }
 
-  html += '<div class="divider"></div>';
-  html += '<div class="row"><h2 style="font-size:14px;">最終集合地點</h2>' + (org ? '<button class="btn ghost small" data-act="openFinalMeetupModal">編輯</button>' : '') + '</div>';
+  if (showGroupsBlock) html += '<div class="row"><h2 style="font-size:14px;">最終集合地點</h2>' + (org ? '<button class="btn ghost small" data-act="openFinalMeetupModal">編輯</button>' : '') + '</div>';
+  else if (org) html += '<div class="row" style="justify-content:flex-end;"><button class="btn ghost small" data-act="openFinalMeetupModal">編輯</button></div>';
+
   if (e.meetup.date || e.meetup.location) {
-    html += '<div class="row" style="margin-top:6px;font-size:14px;">';
-    html += '<span>🕒 ' + esc(toSlashDate(e.meetup.date) || "未定") + ' ' + esc(e.meetup.time || "") + '</span>';
-    html += '<span>📍 ' + esc(e.meetup.location || "未定") + '</span>';
-    html += '</div>';
+    html += '<p style="margin-top:6px;font-size:14px;">🕒 ' + esc(toMonthDay(e.meetup.date) || "未定") + ' ' + esc(e.meetup.time || "") + '　📍 ' + esc(e.meetup.location || "未定") + '</p>';
     if (e.meetup.note) html += '<p style="margin-top:4px;font-size:13px;color:var(--color-text-soft);white-space:pre-wrap;">' + esc(e.meetup.note) + '</p>';
   } else {
     html += '<p class="empty-hint" style="padding:8px 0;">尚未填寫</p>';
