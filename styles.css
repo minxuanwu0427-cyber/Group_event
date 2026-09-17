@@ -126,11 +126,11 @@ textarea.input { min-height: 80px; resize: vertical; }
 .room-card.mine-room { background: var(--color-cream); }
 .room-card.mine-room.full { box-shadow: inset 0 0 0 2px var(--color-cream-text); }
 .room-card.mine-room strong { color: var(--color-cream-text); }
-.room-card.mine-room .avatar { background: white; color: var(--color-cream-text); box-shadow: inset 0 0 0 1.5px var(--color-cream-text); }
+.room-card.mine-room .avatar { background: #FBF9F0; color: var(--color-cream-text); box-shadow: inset 0 0 0 1.5px var(--color-cream-text); }
 .room-card.mine-vehicle { background: var(--color-pink); }
 .room-card.mine-vehicle.full { background: var(--color-cream); box-shadow: inset 0 0 0 2px var(--color-pink-text); }
 .room-card.mine-vehicle strong { color: var(--color-pink-text); }
-.room-card.mine-vehicle .avatar { background: white; color: var(--color-pink-text); box-shadow: inset 0 0 0 1.5px var(--color-pink-text); }
+.room-card.mine-vehicle .avatar { background: #F7FAF3; color: var(--color-pink-text); box-shadow: inset 0 0 0 1.5px var(--color-pink-text); }
 
 .two-col-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
 .two-col-grid .room-card { margin-bottom: 0; }
