@@ -123,8 +123,10 @@ textarea.input { min-height: 80px; resize: vertical; }
 
 .room-card { background: #F4F7F1; border-radius: var(--radius-sm); padding: var(--space-3); margin-bottom: var(--space-3); }
 .room-card.full { background: var(--color-cream); }
-.room-card.mine { background: var(--color-blue); }
-.room-card.mine.full { background: var(--color-cream); box-shadow: inset 0 0 0 2px var(--color-blue-text); }
+.room-card.mine-room { background: var(--color-cream); }
+.room-card.mine-room.full { box-shadow: inset 0 0 0 2px var(--color-cream-text); }
+.room-card.mine-vehicle { background: var(--color-blue); }
+.room-card.mine-vehicle.full { background: var(--color-cream); box-shadow: inset 0 0 0 2px var(--color-blue-text); }
 
 .two-col-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
 .two-col-grid .room-card { margin-bottom: 0; }
