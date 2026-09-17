@@ -32,7 +32,7 @@ const state = {
   eventCode: localStorage.getItem(CODE_KEY) || null,
   event: undefined,       // undefined=載入中 / null=此代號尚未建立 / object=正常資料
   currentUserId: null,
-  ui: { tab: "overview", expenseModal: false, infoEditId: null, rosterOpen: false, roomsSubTab: "room", viewMode: false, arrivalModalFor: null, arrivalMethodTemp: null, arrivalsOpen: false, balancesOpen: false, unassignedRoomsOpen: false, unassignedVehiclesOpen: false, expensesOpen: false }
+  ui: { tab: "overview", expenseModal: false, infoEditId: null, rosterOpen: false, roomsSubTab: "room", viewMode: false, arrivalModalFor: null, arrivalMethodTemp: null, arrivalsOpen: false, unassignedRoomsOpen: false, unassignedVehiclesOpen: false, expensesOpen: false, settlementModalOpen: false }
 };
 
 function uid() { return "id_" + Math.random().toString(36).slice(2, 10); }
@@ -549,9 +549,16 @@ function renderExpenseTab() {
   const e = state.event;
   const total = e.expenses.reduce((s, x) => s + Number(x.amount || 0), 0);
   const balances = computeBalances();
-  const settlements = computeSettlements(balances);
+  const myBalance = balances[state.currentUserId] || 0;
 
   let html = '<div class="card card-bordered">';
+  html += '<h2 style="margin-bottom:10px;">目前費用總覽</h2>';
+  html += '<div class="row" style="padding:4px 0;"><span style="font-size:14px;">總花費</span><span style="font-weight:700;">NT$ ' + fmtMoney(total) + '</span></div>';
+  html += '<div class="row" style="padding:4px 0;"><span style="font-size:14px;">我的結算</span><span class="amt ' + (myBalance >= 0 ? "pos" : "neg") + '">' + (myBalance >= 0 ? "應收 " : "應付 ") + 'NT$ ' + fmtMoney(Math.abs(myBalance)) + '</span></div>';
+  html += '<button class="btn secondary" style="width:100%;margin-top:10px;" data-act="openSettlementModal">結算明細</button>';
+  html += '</div>';
+
+  html += '<div class="card card-bordered">';
   html += '<div class="row" data-act="toggleExpenses" style="cursor:pointer;">' +
     '<h2>花費紀錄（總計 NT$ ' + fmtMoney(total) + '）</h2><span class="chip neutral">' + (state.ui.expensesOpen ? "收合" : "展開") + '</span></div>';
   const allExpenses = [...e.expenses].reverse();
@@ -570,26 +577,29 @@ function renderExpenseTab() {
     html += '</div></div>';
   });
   html += '</div>';
-
-  html += '<div class="card card-bordered balances-card">';
-  html += '<div class="row" data-act="toggleBalances" style="cursor:pointer;">' +
-    '<h2>每人餘額</h2><span class="chip neutral">' + (state.ui.balancesOpen ? "收合" : "展開") + '</span></div>';
-  const peopleToShow = state.ui.balancesOpen ? e.people : e.people.filter(p => p.id === state.currentUserId);
-  peopleToShow.forEach(p => {
+  return html;
+}
+function renderSettlementModal() {
+  const e = state.event;
+  const balances = computeBalances();
+  const settlements = computeSettlements(balances);
+  let html = '<div class="modal-backdrop"><div class="modal-sheet">';
+  html += '<h2>結算明細</h2>';
+  html += '<div class="section-title">每人餘額</div>';
+  e.people.forEach(p => {
     const v = balances[p.id] || 0;
     html += '<div class="balance-row"><span>' + esc(p.name) + '</span>' +
       '<span class="amt ' + (v >= 0 ? "pos" : "neg") + '">' + (v >= 0 ? "應收 " : "應付 ") + 'NT$ ' + fmtMoney(Math.abs(v)) + '</span></div>';
   });
-  html += '</div>';
-
-  html += '<div class="card card-bordered">';
-  html += '<h2 style="margin-bottom:8px;">結算建議（誰付給誰）</h2>';
+  html += '<div class="divider"></div>';
+  html += '<div class="section-title">結算建議（誰付給誰）</div>';
   if (!settlements.length) html += '<p class="empty-hint">目前不需要轉帳，帳務已平衡</p>';
   settlements.forEach(s => {
     html += '<div class="balance-row"><span>' + esc(personName(s.from)) + ' → ' + esc(personName(s.to)) + '</span>' +
       '<span class="amt neg">NT$ ' + fmtMoney(s.amount) + '</span></div>';
   });
-  html += '</div>';
+  html += '<button class="btn" style="width:100%;margin-top:14px;" data-act="closeSettlementModal">關閉</button>';
+  html += '</div></div>';
   return html;
 }
 function renderExpenseModal() {
@@ -669,13 +679,14 @@ function render() {
   html += renderTabbar();
   if (state.ui.expenseModal) html += renderExpenseModal();
   if (state.ui.arrivalModalFor) html += renderArrivalModal();
+  if (state.ui.settlementModalOpen) html += renderSettlementModal();
   app.innerHTML = html;
 }
 
 /* -------------------------------- 事件委派 -------------------------------- */
 document.addEventListener("click", e => {
   if (e.target.classList && e.target.classList.contains("modal-backdrop")) {
-    state.ui.expenseModal = false; state.ui.arrivalModalFor = null; state.ui.arrivalMethodTemp = null; render(); return;
+    state.ui.expenseModal = false; state.ui.arrivalModalFor = null; state.ui.arrivalMethodTemp = null; state.ui.settlementModalOpen = false; render(); return;
   }
   const el = e.target.closest("[data-act]");
   if (!el) return;
@@ -709,8 +720,6 @@ document.addEventListener("click", e => {
     render();
   } else if (act === "toggleViewMode") {
     state.ui.viewMode = !state.ui.viewMode; render();
-  } else if (act === "toggleBalances") {
-    state.ui.balancesOpen = !state.ui.balancesOpen; render();
   } else if (act === "toggleArrivals") {
     state.ui.arrivalsOpen = !state.ui.arrivalsOpen; render();
   } else if (act === "toggleUnassignedRooms") {
@@ -719,6 +728,10 @@ document.addEventListener("click", e => {
     state.ui.unassignedVehiclesOpen = !state.ui.unassignedVehiclesOpen; render();
   } else if (act === "toggleExpenses") {
     state.ui.expensesOpen = !state.ui.expensesOpen; render();
+  } else if (act === "openSettlementModal") {
+    state.ui.settlementModalOpen = true; render();
+  } else if (act === "closeSettlementModal") {
+    state.ui.settlementModalOpen = false; render();
   } else if (act === "toggleRoster") {
     state.ui.rosterOpen = !state.ui.rosterOpen; render();
   } else if (act === "editTitle") {
