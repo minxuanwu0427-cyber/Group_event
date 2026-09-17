@@ -8,6 +8,7 @@
 
 const COLLECTION = "groupEvents";
 const CODE_KEY = "groupEvent_code";
+const CREATE_PASSWORD = "maxine"; // 建立新揪團時要輸入的密碼，避免不相干的人亂建立
 
 const DEFAULT_EVENT = {
   title: "揪團出遊",
@@ -158,6 +159,7 @@ function renderCreateEventScreen() {
   html += '<p style="margin:16px 0;color:var(--color-text-soft);font-size:14px;">代號「' + esc(state.eventCode) + '」還沒有人建立，你是第一位，會自動成為主揪</p>';
   html += '<input class="input" id="newEventTitle" placeholder="這趟旅行的名稱（例如：南投包棟出遊）" style="max-width:320px;margin-bottom:10px;">';
   html += '<input class="input" id="newOrganizerName" placeholder="你的名字" style="max-width:320px;margin-bottom:10px;">';
+  html += '<input class="input" id="newEventPassword" type="password" placeholder="建立密碼" style="max-width:320px;margin-bottom:10px;">';
   html += '<button class="btn" data-act="createEvent">建立揪團並加入</button>';
   html += '<button class="btn ghost small" style="margin-top:14px;" data-act="switchCode">代號輸入錯了？重新輸入</button>';
   html += '</div>';
@@ -218,7 +220,7 @@ function renderMeetupCard() {
         html += '<div class="row" style="align-items:center;flex-wrap:wrap;">';
         html += '<strong style="flex:1;">' + esc(g.title || "集合分組") + '</strong>';
         html += '<div style="display:flex;">';
-        members.forEach((p, i) => { html += '<div class="avatar small" style="margin-left:' + (i > 0 ? "-10px" : "0") + ';box-shadow:0 0 0 2px var(--color-surface, #fff);">' + avatarText(p) + '</div>'; });
+        members.forEach((p, i) => { html += '<div class="avatar small" style="margin-left:' + (i > 0 ? "-4px" : "0") + ';box-shadow:0 0 0 2px var(--color-surface, #fff);">' + avatarText(p) + '</div>'; });
         html += '</div>';
         html += '</div>';
         if (g.date || g.time || g.location) {
@@ -335,6 +337,7 @@ function renderOverview() {
   html += '</div>';
 
   html += '<p style="text-align:center;margin-top:16px;"><button class="btn ghost small" data-act="switchIdentity">不是你？切換身分</button></p>';
+  html += '<p style="text-align:center;margin-top:4px;font-size:11px;color:var(--color-text-soft);opacity:.7;">代號 ' + esc(state.eventCode) + '</p>';
   return html;
 }
 function statTile(cls, icon, value, label, tab, subTab) {
@@ -805,7 +808,9 @@ document.addEventListener("click", e => {
   } else if (act === "createEvent") {
     const title = document.getElementById("newEventTitle").value.trim() || DEFAULT_EVENT.title;
     const name = document.getElementById("newOrganizerName").value.trim();
+    const password = document.getElementById("newEventPassword").value;
     if (!name) return;
+    if (password !== CREATE_PASSWORD) { alert("建立密碼不正確"); return; }
     const pid = uid();
     const ev = JSON.parse(JSON.stringify(DEFAULT_EVENT));
     ev.title = title;
