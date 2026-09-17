@@ -79,6 +79,17 @@ textarea.input { min-height: 80px; resize: vertical; }
 }
 .header .trip-date-line { font-size: 13px; color: var(--color-text-soft); margin-top: 4px; }
 
+.marquee-bar {
+  background: var(--color-accent-dark); color: white; overflow: hidden; white-space: nowrap;
+  padding: 7px 0; font-size: 12.5px; margin: 4px calc(-1 * var(--space-4)) var(--space-3);
+}
+.marquee-bar span { display: inline-block; padding-left: 100%; animation: marquee-scroll 14s linear infinite; }
+.marquee-bar.marquee-empty { text-align: center; opacity: .7; font-size: 12px; }
+@keyframes marquee-scroll {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-100%); }
+}
+
 .roster-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-3); margin-top: var(--space-2); }
 .roster-item { display: flex; flex-direction: row; align-items: center; gap: 6px; text-align: left; }
 .roster-item .name { font-size: 12.5px; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
