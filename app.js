@@ -20,6 +20,7 @@ const DEFAULT_EVENT = {
   vehicleAssignments: {}, // personId -> vehicleId
   arrivals: {},           // personId -> { method, eta }
   prepItems: [],
+  prepMemo: "",           // 主揪備忘錄，自由文字
   infoBlocks: [
     { id: "i1", title: "住宿注意事項", content: "" },
     { id: "i2", title: "行程重點", content: "" }
@@ -97,6 +98,7 @@ function normalizeEvent(data) {
   e.vehicles = Array.isArray(data.vehicles) ? data.vehicles : [];
   e.vehicleAssignments = data.vehicleAssignments || {};
   e.arrivals = data.arrivals || {};
+  e.prepMemo = data.prepMemo || "";
   e.prepItems = Array.isArray(data.prepItems) ? data.prepItems : DEFAULT_EVENT.prepItems;
   e.prepItems = e.prepItems.map(it => {
     if (Array.isArray(it.assigneeIds)) return it;
@@ -233,7 +235,7 @@ function renderOverview() {
   let taskValue;
   if (!myTasks.length) taskValue = ["未分配"];
   else taskValue = myTasks.map(it => it.label);
-  html += statTile("t-mint", "📋", taskValue, "要幫忙什麼", "prep");
+  html += statTile("t-mint", "📋", taskValue, "要幫忙什麼", canManage() ? "prep" : null);
   const balances = computeBalances();
   const settlements = computeSettlements(balances);
   const myPay = settlements.filter(s => s.from === state.currentUserId);
@@ -252,7 +254,7 @@ function statTile(cls, icon, value, label, tab, subTab) {
   const lines = Array.isArray(value) ? value : [value];
   const valueHtml = lines.map(esc).join("<br>");
   const fontSize = lines.length > 1 ? "14px" : "17px";
-  return '<div class="stat-tile ' + cls + '" data-act="goTab" data-tab="' + tab + '"' + (subTab ? ' data-sub="' + subTab + '"' : '') + '>' +
+  return '<div class="stat-tile ' + cls + '"' + (tab ? ' data-act="goTab" data-tab="' + tab + '"' : '') + (subTab ? ' data-sub="' + subTab + '"' : '') + '>' +
     '<div class="stat-top"><span class="stat-icon">' + icon + '</span><span class="stat-label">' + esc(label) + '</span></div>' +
     '<div class="stat-value" style="font-size:' + fontSize + ';line-height:1.4;">' + valueHtml + '</div>' +
     '</div>';
@@ -471,6 +473,12 @@ function renderPrepTab() {
     html += '</div>';
   });
   html += '</div>';
+
+  html += '<div class="card card-bordered">';
+  html += '<h2 style="margin-bottom:8px;">📝 主揪備忘錄</h2>';
+  const memoRows = Math.max(3, (e.prepMemo || "").split("\n").length + 1);
+  html += '<textarea class="input" rows="' + memoRows + '" data-act="editPrepMemo" placeholder="給自己的提醒事項…" style="overflow:hidden;resize:none;" oninput="this.style.height=\'auto\';this.style.height=this.scrollHeight+\'px\';">' + esc(e.prepMemo || "") + '</textarea>';
+  html += '</div>';
   return html;
 }
 
@@ -623,8 +631,9 @@ const TABS = [
   { id: "expense", label: "記帳" }
 ];
 function renderTabbar() {
+  const tabs = TABS.filter(t => t.id !== "prep" || canManage());
   let html = '<div class="tabbar">';
-  TABS.forEach(t => {
+  tabs.forEach(t => {
     html += '<button class="' + (state.ui.tab === t.id ? "active" : "") + '" data-act="goTab" data-tab="' + t.id + '" aria-label="' + t.label + '">' +
       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' + TAB_ICONS[t.id] + '</svg></button>';
   });
@@ -638,6 +647,7 @@ function render() {
   if (state.event === undefined) { app.innerHTML = '<div class="empty-hint">載入中...</div>'; return; }
   if (state.event === null) { app.innerHTML = renderCreateEventScreen(); return; }
   if (!state.currentUserId || !me()) { app.innerHTML = renderIdentityScreen(); return; }
+  if (state.ui.tab === "prep" && !canManage()) state.ui.tab = "overview";
 
   let body = "";
   if (state.ui.tab === "overview") body = renderOverview();
@@ -692,7 +702,9 @@ document.addEventListener("click", e => {
   } else if (act === "switchIdentity") {
     switchIdentity();
   } else if (act === "goTab") {
-    state.ui.tab = el.dataset.tab;
+    const targetTab = el.dataset.tab;
+    if (targetTab === "prep" && !canManage()) return;
+    state.ui.tab = targetTab;
     if (el.dataset.sub) state.ui.roomsSubTab = el.dataset.sub;
     render();
   } else if (act === "toggleViewMode") {
@@ -858,6 +870,8 @@ document.addEventListener("blur", e => {
     mutate(ev => { ev.infoBlocks.find(x => x.id === id).title = el.value; });
   } else if (act === "editInfoContent") {
     mutate(ev => { ev.infoBlocks.find(x => x.id === id).content = el.value; });
+  } else if (act === "editPrepMemo") {
+    mutate(ev => { ev.prepMemo = el.value; });
   }
 }, true);
 
