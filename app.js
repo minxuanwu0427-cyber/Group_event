@@ -33,7 +33,7 @@ const state = {
   eventCode: localStorage.getItem(CODE_KEY) || null,
   event: undefined,       // undefined=載入中 / null=此代號尚未建立 / object=正常資料
   currentUserId: null,
-  ui: { tab: "overview", expenseModal: false, infoEditId: null, rosterOpen: false, roomsSubTab: "room", viewMode: false, arrivalModalFor: null, arrivalMethodTemp: null, arrivalsOpen: false, balancesOpen: false, unassignedRoomsOpen: false, unassignedVehiclesOpen: false, expensesOpen: false, settlementModalOpen: false, prepTaskModalFor: null, meetupOpen: false, meetupGroupModalFor: null }
+  ui: { tab: "overview", expenseModal: false, infoEditId: null, rosterOpen: false, roomsSubTab: "room", viewMode: false, arrivalModalFor: null, arrivalMethodTemp: null, arrivalsOpen: false, balancesOpen: false, unassignedRoomsOpen: false, unassignedVehiclesOpen: false, expensesOpen: false, settlementModalOpen: false, prepTaskModalFor: null, meetupOpen: false, meetupGroupModalFor: null, finalMeetupModalOpen: false }
 };
 
 function uid() { return "id_" + Math.random().toString(36).slice(2, 10); }
@@ -209,17 +209,17 @@ function renderMeetupCard() {
     groupsToShow.forEach(g => {
       const members = e.people.filter(p => (g.memberIds || []).includes(p.id));
       html += '<div class="room-card" style="margin-top:8px;">';
-      html += '<div class="row"><strong>' + esc(g.title || "集合分組") + '</strong></div>';
-      if (g.date || g.time) html += '<p style="margin-top:4px;font-size:13px;">🕒 ' + esc(g.date || "") + ' ' + esc(g.time || "") + '</p>';
-      if (g.location) html += '<p style="margin-top:2px;font-size:13px;">📍 ' + esc(g.location) + '</p>';
-      if (g.note) html += '<p style="margin-top:2px;font-size:12.5px;color:var(--color-text-soft);white-space:pre-wrap;">' + esc(g.note) + '</p>';
-      if (members.length) {
-        html += '<div class="chip-grid grid-3" style="margin-top:6px;">';
-        members.forEach(p => {
-          html += '<div class="person-chip"><div class="avatar small">' + avatarText(p) + '</div><span class="name">' + esc(p.name) + '</span></div>';
-        });
+      html += '<div class="row" style="align-items:center;flex-wrap:wrap;">';
+      html += '<strong style="flex:1;">' + esc(g.title || "集合分組") + '</strong>';
+      members.forEach(p => { html += '<div class="avatar small" style="margin-left:4px;">' + avatarText(p) + '</div>'; });
+      html += '</div>';
+      if (g.date || g.time || g.location) {
+        html += '<div class="row" style="margin-top:6px;font-size:13px;">';
+        html += '<span>🕒 ' + esc(toSlashDate(g.date) || "未定") + ' ' + esc(g.time || "") + '</span>';
+        html += '<span>📍 ' + esc(g.location || "未定") + '</span>';
         html += '</div>';
       }
+      if (g.note) html += '<p style="margin-top:4px;font-size:12.5px;color:var(--color-text-soft);white-space:pre-wrap;">' + esc(g.note) + '</p>';
       if (org) html += '<div style="margin-top:6px;"><button class="btn ghost small" data-act="openMeetupGroupModal" data-id="' + g.id + '">編輯</button>' +
         '<button class="btn ghost small" data-act="deleteMeetupGroup" data-id="' + g.id + '">刪除</button></div>';
       html += '</div>';
@@ -227,10 +227,12 @@ function renderMeetupCard() {
   }
 
   html += '<div class="divider"></div>';
-  html += '<div class="row"><h2 style="font-size:14px;">📍 最終集合地點</h2>' + (org ? '<button class="btn ghost small" data-act="editMeetup">編輯</button>' : '') + '</div>';
+  html += '<div class="row"><h2 style="font-size:14px;">最終集合地點</h2>' + (org ? '<button class="btn ghost small" data-act="openFinalMeetupModal">編輯</button>' : '') + '</div>';
   if (e.meetup.date || e.meetup.location) {
-    html += '<p style="margin-top:6px;font-size:14px;">🕒 ' + esc(e.meetup.date || "未定") + ' ' + esc(e.meetup.time || "") + '</p>';
-    html += '<p style="margin-top:4px;font-size:14px;">📍 ' + esc(e.meetup.location || "未定") + '</p>';
+    html += '<div class="row" style="margin-top:6px;font-size:14px;">';
+    html += '<span>🕒 ' + esc(toSlashDate(e.meetup.date) || "未定") + ' ' + esc(e.meetup.time || "") + '</span>';
+    html += '<span>📍 ' + esc(e.meetup.location || "未定") + '</span>';
+    html += '</div>';
     if (e.meetup.note) html += '<p style="margin-top:4px;font-size:13px;color:var(--color-text-soft);white-space:pre-wrap;">' + esc(e.meetup.note) + '</p>';
   } else {
     html += '<p class="empty-hint" style="padding:8px 0;">尚未填寫</p>';
@@ -247,8 +249,8 @@ function renderMeetupGroupModal() {
   let html = '<div class="modal-backdrop"><div class="modal-sheet">';
   html += '<h2>' + (isNew ? "新增分組集合" : "編輯分組集合") + '</h2>';
   html += '<div class="form-field"><label>分組名稱</label><input class="input" id="meetupGroupTitle" placeholder="例如：搭台鐵組" value="' + esc(g ? g.title : "") + '"></div>';
-  html += '<div class="form-field"><label>日期</label><input class="input" id="meetupGroupDate" placeholder="YYYY/MM/DD" value="' + esc(g ? g.date : "") + '"></div>';
-  html += '<div class="form-field"><label>時間</label><input class="input" id="meetupGroupTime" placeholder="例如：09:00" value="' + esc(g ? g.time : "") + '"></div>';
+  html += '<div class="form-field"><label>日期</label><input class="input" type="date" id="meetupGroupDate" value="' + esc(g ? g.date : "") + '"></div>';
+  html += '<div class="form-field"><label>時間</label><input class="input" type="time" id="meetupGroupTime" value="' + esc(g ? g.time : "") + '"></div>';
   html += '<div class="form-field"><label>地點</label><input class="input" id="meetupGroupLocation" placeholder="例如：新竹高鐵站" value="' + esc(g ? g.location : "") + '"></div>';
   html += '<div class="form-field"><label>備註</label><textarea class="input" id="meetupGroupNote" rows="2">' + esc(g ? g.note : "") + '</textarea></div>';
   html += '<div class="form-field"><label>這組集合的人</label>';
@@ -258,6 +260,18 @@ function renderMeetupGroupModal() {
   });
   html += '</div>';
   html += '<button class="btn" style="width:100%;" data-act="submitMeetupGroup" data-id="' + (isNew ? "" : groupId) + '">儲存</button>';
+  html += '</div></div>';
+  return html;
+}
+function renderFinalMeetupModal() {
+  const m = state.event.meetup;
+  let html = '<div class="modal-backdrop"><div class="modal-sheet">';
+  html += '<h2>最終集合地點</h2>';
+  html += '<div class="form-field"><label>日期</label><input class="input" type="date" id="finalMeetupDate" value="' + esc(m.date) + '"></div>';
+  html += '<div class="form-field"><label>時間</label><input class="input" type="time" id="finalMeetupTime" value="' + esc(m.time) + '"></div>';
+  html += '<div class="form-field"><label>地點</label><input class="input" id="finalMeetupLocation" placeholder="例如：南投火車站" value="' + esc(m.location) + '"></div>';
+  html += '<div class="form-field"><label>補充說明</label><textarea class="input" id="finalMeetupNote" rows="2">' + esc(m.note) + '</textarea></div>';
+  html += '<button class="btn" style="width:100%;" data-act="submitFinalMeetup">儲存</button>';
   html += '</div></div>';
   return html;
 }
@@ -765,13 +779,14 @@ function render() {
   if (state.ui.settlementModalOpen) html += renderSettlementModal();
   if (state.ui.prepTaskModalFor) html += renderPrepTaskModal();
   if (state.ui.meetupGroupModalFor) html += renderMeetupGroupModal();
+  if (state.ui.finalMeetupModalOpen) html += renderFinalMeetupModal();
   app.innerHTML = html;
 }
 
 /* -------------------------------- 事件委派 -------------------------------- */
 document.addEventListener("click", e => {
   if (e.target.classList && e.target.classList.contains("modal-backdrop")) {
-    state.ui.expenseModal = false; state.ui.arrivalModalFor = null; state.ui.arrivalMethodTemp = null; state.ui.settlementModalOpen = false; state.ui.prepTaskModalFor = null; state.ui.meetupGroupModalFor = null; render(); return;
+    state.ui.expenseModal = false; state.ui.arrivalModalFor = null; state.ui.arrivalMethodTemp = null; state.ui.settlementModalOpen = false; state.ui.prepTaskModalFor = null; state.ui.meetupGroupModalFor = null; state.ui.finalMeetupModalOpen = false; render(); return;
   }
   const el = e.target.closest("[data-act]");
   if (!el) return;
@@ -829,13 +844,15 @@ document.addEventListener("click", e => {
     const start = window.prompt("出發日期（格式 YYYY/MM/DD，例如 2026/10/18）", toSlashDate(ev0.tripDates.start)) ?? ev0.tripDates.start;
     const end = window.prompt("結束日期（格式 YYYY/MM/DD，當天來回可留空或跟出發日相同）", toSlashDate(ev0.tripDates.end)) ?? ev0.tripDates.end;
     mutate(ev => { ev.tripDates = { start: start.trim(), end: end.trim() }; });
-  } else if (act === "editMeetup") {
-    const ev = state.event;
-    const date = window.prompt("最終集合日期（例如 2026/10/18）", ev.meetup.date) ?? ev.meetup.date;
-    const time = window.prompt("最終集合時間", ev.meetup.time) ?? ev.meetup.time;
-    const location = window.prompt("最終集合地點", ev.meetup.location) ?? ev.meetup.location;
-    const note = window.prompt("補充說明", ev.meetup.note) ?? ev.meetup.note;
+  } else if (act === "openFinalMeetupModal") {
+    state.ui.finalMeetupModalOpen = true; render();
+  } else if (act === "submitFinalMeetup") {
+    const date = document.getElementById("finalMeetupDate").value;
+    const time = document.getElementById("finalMeetupTime").value;
+    const location = document.getElementById("finalMeetupLocation").value.trim();
+    const note = document.getElementById("finalMeetupNote").value.trim();
     mutate(e2 => { e2.meetup = { date, time, location, note }; });
+    state.ui.finalMeetupModalOpen = false; render();
   } else if (act === "toggleMeetup") {
     state.ui.meetupOpen = !state.ui.meetupOpen; render();
   } else if (act === "openMeetupGroupModal") {
