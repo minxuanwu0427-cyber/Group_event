@@ -31,7 +31,7 @@ const state = {
   eventCode: localStorage.getItem(CODE_KEY) || null,
   event: undefined,       // undefined=載入中 / null=此代號尚未建立 / object=正常資料
   currentUserId: null,
-  ui: { tab: "overview", expenseModal: false, infoEditId: null, rosterOpen: false, roomsSubTab: "room", viewMode: false, arrivalModalFor: null, arrivalMethodTemp: null, arrivalsOpen: false }
+  ui: { tab: "overview", expenseModal: false, infoEditId: null, rosterOpen: false, roomsSubTab: "room", viewMode: false, arrivalModalFor: null, arrivalMethodTemp: null, arrivalsOpen: false, balancesOpen: false }
 };
 
 function uid() { return "id_" + Math.random().toString(36).slice(2, 10); }
@@ -174,11 +174,21 @@ function renderIdentityScreen() {
 }
 
 /* -------------------------------- 總覽 -------------------------------- */
+const strokeCollator = (() => {
+  try { return new Intl.Collator("zh-Hant-u-co-stroke"); } catch (e) { return new Intl.Collator("zh-Hant"); }
+})();
+function sortedRoster(people) {
+  return people.slice().sort((a, b) => {
+    if (!!a.isOrganizer !== !!b.isOrganizer) return a.isOrganizer ? -1 : 1;
+    return strokeCollator.compare(a.name || "", b.name || "");
+  });
+}
 function renderOverview() {
   const e = state.event;
   const myRoom = e.rooms.find(r => r.id === e.roomAssignments[state.currentUserId]);
   const myVehicle = e.vehicles.find(v => v.id === e.vehicleAssignments[state.currentUserId]);
   const myTasks = e.prepItems.filter(it => (it.assigneeIds || []).includes(state.currentUserId));
+  const roster = sortedRoster(e.people);
 
   let html = '<div class="card card-bordered">';
   html += '<div class="row"><h2>集合資訊</h2>' + (canManage() ? '<button class="btn ghost small" data-act="editMeetup">編輯</button>' : '') + '</div>';
@@ -196,14 +206,14 @@ function renderOverview() {
     '<h2>👥 團員名單（' + e.people.length + '）</h2><span class="chip neutral">' + (state.ui.rosterOpen ? "收合" : "展開") + '</span></div>';
   if (state.ui.rosterOpen) {
     html += '<div class="roster-grid">';
-    e.people.forEach(p => {
+    roster.forEach(p => {
       html += '<div class="roster-item"><div class="avatar small">' + avatarText(p) + '</div><span class="name">' + esc(p.name) + (p.isOrganizer ? ' 🙋🏻\u200d♂️' : '') + '</span></div>';
     });
     html += '</div>';
     if (canManage()) {
       html += '<div class="divider"></div>';
       html += '<div class="row"><span class="section-title" style="margin:0;">團員管理</span><button class="btn ghost small" data-act="addPersonPrompt">＋新增團員</button></div>';
-      e.people.forEach(p => {
+      roster.forEach(p => {
         html += '<div class="person-line"><div class="avatar small">' + avatarText(p) + '</div><span class="name">' + esc(p.name) + (p.isOrganizer ? ' 🙋🏻\u200d♂️主揪' : '') + '</span>';
         html += '<button class="btn ghost small" data-act="editPerson" data-id="' + p.id + '">編輯</button>';
         if (p.id !== state.currentUserId) {
@@ -356,13 +366,24 @@ function renderTransportSection() {
     '<h2>抵達方式與時間</h2><span class="chip neutral">' + (state.ui.arrivalsOpen ? "收合" : "展開") + '</span></div>';
   if (state.ui.arrivalsOpen) {
     html += '<div style="margin-top:8px;">';
-    e.people.forEach(p => {
+    const sortedPeople = e.people.slice().sort((p1, p2) => {
+      const A = e.arrivals[p1.id] || {}, B = e.arrivals[p2.id] || {};
+      const aEmpty = !A.method && !A.eta, bEmpty = !B.method && !B.eta;
+      if (aEmpty && !bEmpty) return 1;
+      if (!aEmpty && bEmpty) return -1;
+      if (aEmpty && bEmpty) return 0;
+      const mCompare = (A.method || "").localeCompare(B.method || "", "zh-Hant");
+      if (mCompare !== 0) return mCompare;
+      return (A.eta || "").localeCompare(B.eta || "");
+    });
+    sortedPeople.forEach(p => {
       const a = e.arrivals[p.id] || {};
       const editable = canEditPerson(p.id);
-      const summary = (a.method || a.eta) ? esc(a.method || "") + (a.eta ? "・" + esc(a.eta) : "") : "尚未填寫";
+      const parts = [a.method, a.location, a.eta].filter(Boolean);
+      const summary = parts.length ? parts.map(esc).join("．") : "尚未填寫";
       html += '<div class="row" ' + (editable ? 'data-act="openArrivalModal" data-id="' + p.id + '"' : '') + ' style="padding:8px 0;border-bottom:1px solid var(--color-divider);' + (editable ? 'cursor:pointer;' : '') + '">';
       html += '<div class="person-line" style="padding:0;"><div class="avatar small">' + avatarText(p) + '</div><span class="name">' + esc(p.name) + '</span></div>';
-      html += '<span class="' + (a.method || a.eta ? "" : "empty-hint") + '" style="font-size:13px;padding:0;">' + summary + '</span>';
+      html += '<span class="' + (parts.length ? "" : "empty-hint") + '" style="font-size:13px;padding:0;">' + summary + '</span>';
       html += '</div>';
     });
     if (!e.people.length) html += '<p class="empty-hint">尚無團員</p>';
@@ -386,6 +407,7 @@ function renderArrivalModal() {
   if (currentMethod === "其他") {
     html += '<div class="form-field"><label>請輸入交通方式</label><input class="input" id="arrivalMethodOther" value="' + esc(isPreset ? "" : (a.method || "")) + '"></div>';
   }
+  html += '<div class="form-field"><label>抵達地點（例如：烏日站）</label><input class="input" id="arrivalLocationInput" value="' + esc(a.location || "") + '"></div>';
   html += '<div class="form-field"><label>預計抵達時間</label><input class="input" type="time" id="arrivalTimeInput" value="' + esc(a.eta || "") + '"></div>';
   html += '<button class="btn" style="width:100%;" data-act="submitArrival" data-id="' + pid + '">儲存</button>';
   html += '</div></div>';
@@ -510,14 +532,19 @@ function renderExpenseTab() {
     html += '<div><div style="font-size:14px;font-weight:600;">' + esc(ex.note || "（無備註）") + '</div>';
     html += '<div style="font-size:12.5px;color:var(--color-text-soft);">' + esc(personName(ex.payerId)) + ' 付款 · ' + (ex.splitAmong || []).length + ' 人分攤</div></div>';
     html += '<div style="text-align:right;"><div style="font-weight:700;">NT$ ' + fmtMoney(ex.amount) + '</div>';
-    if (canManage() || ex.payerId === state.currentUserId) html += '<button class="btn ghost small" data-act="deleteExpense" data-id="' + ex.id + '">刪除</button>';
+    if (canManage() || ex.payerId === state.currentUserId) {
+      html += '<button class="btn ghost small" data-act="editExpense" data-id="' + ex.id + '">編輯</button>';
+      html += '<button class="btn ghost small" data-act="deleteExpense" data-id="' + ex.id + '">刪除</button>';
+    }
     html += '</div></div>';
   });
   html += '</div>';
 
-  html += '<div class="card card-bordered">';
-  html += '<h2 style="margin-bottom:8px;">每人餘額</h2>';
-  e.people.forEach(p => {
+  html += '<div class="card card-bordered balances-card">';
+  html += '<div class="row" data-act="toggleBalances" style="cursor:pointer;">' +
+    '<h2>每人餘額</h2><span class="chip neutral">' + (state.ui.balancesOpen ? "收合" : "展開") + '</span></div>';
+  const peopleToShow = state.ui.balancesOpen ? e.people : e.people.filter(p => p.id === state.currentUserId);
+  peopleToShow.forEach(p => {
     const v = balances[p.id] || 0;
     html += '<div class="balance-row"><span>' + esc(p.name) + '</span>' +
       '<span class="amt ' + (v >= 0 ? "pos" : "neg") + '">' + (v >= 0 ? "應收 " : "應付 ") + 'NT$ ' + fmtMoney(Math.abs(v)) + '</span></div>';
@@ -536,20 +563,23 @@ function renderExpenseTab() {
 }
 function renderExpenseModal() {
   const e = state.event;
+  const editId = state.ui.expenseModal === true ? null : state.ui.expenseModal;
+  const ex = editId ? e.expenses.find(x => x.id === editId) : null;
   let html = '<div class="modal-backdrop"><div class="modal-sheet">';
-  html += '<h2>新增花費</h2>';
+  html += '<h2>' + (ex ? "編輯花費" : "新增花費") + '</h2>';
   html += '<div class="form-field"><label>付款人</label><select class="input" id="expPayer">';
-  e.people.forEach(p => { html += '<option value="' + p.id + '"' + (p.id === state.currentUserId ? " selected" : "") + '>' + esc(p.name) + '</option>'; });
+  e.people.forEach(p => { html += '<option value="' + p.id + '"' + ((ex ? ex.payerId : state.currentUserId) === p.id ? " selected" : "") + '>' + esc(p.name) + '</option>'; });
   html += '</select></div>';
-  html += '<div class="form-field"><label>金額（NT$）</label><input class="input" id="expAmount" type="number" inputmode="numeric" placeholder="0"></div>';
-  html += '<div class="form-field"><label>備註</label><input class="input" id="expNote" placeholder="例如：晚餐、車資"></div>';
+  html += '<div class="form-field"><label>金額（NT$）</label><input class="input" id="expAmount" type="number" inputmode="numeric" placeholder="0" value="' + (ex ? ex.amount : "") + '"></div>';
+  html += '<div class="form-field"><label>備註</label><input class="input" id="expNote" placeholder="例如：晚餐、車資" value="' + esc(ex ? ex.note : "") + '"></div>';
   html += '<div class="form-field"><label>分攤的人</label>';
+  const splitSet = ex ? (ex.splitAmong || []) : e.people.map(p => p.id);
   e.people.forEach(p => {
     html += '<label style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:14px;">' +
-      '<input type="checkbox" class="expSplit" value="' + p.id + '" checked> ' + esc(p.name) + '</label>';
+      '<input type="checkbox" class="expSplit" value="' + p.id + '"' + (splitSet.includes(p.id) ? " checked" : "") + '> ' + esc(p.name) + '</label>';
   });
   html += '</div>';
-  html += '<button class="btn" style="width:100%;" data-act="submitExpense">儲存</button>';
+  html += '<button class="btn" style="width:100%;" data-act="submitExpense" data-id="' + (editId || "") + '">儲存</button>';
   html += '</div></div>';
   return html;
 }
@@ -644,6 +674,8 @@ document.addEventListener("click", e => {
     render();
   } else if (act === "toggleViewMode") {
     state.ui.viewMode = !state.ui.viewMode; render();
+  } else if (act === "toggleBalances") {
+    state.ui.balancesOpen = !state.ui.balancesOpen; render();
   } else if (act === "toggleArrivals") {
     state.ui.arrivalsOpen = !state.ui.arrivalsOpen; render();
   } else if (act === "toggleRoster") {
@@ -737,13 +769,19 @@ document.addEventListener("click", e => {
     mutate(ev => { ev.infoBlocks.push({ id: uid(), title, content: "" }); });
   } else if (act === "openExpenseModal") {
     state.ui.expenseModal = true; render();
+  } else if (act === "editExpense") {
+    state.ui.expenseModal = id; render();
   } else if (act === "submitExpense") {
     const payerId = document.getElementById("expPayer").value;
     const amount = Number(document.getElementById("expAmount").value || 0);
     const note = document.getElementById("expNote").value.trim();
     const splitAmong = Array.from(document.querySelectorAll(".expSplit:checked")).map(x => x.value);
     if (!amount || !splitAmong.length) { alert("請輸入金額並至少選一位分攤者"); return; }
-    mutate(ev => { ev.expenses.push({ id: uid(), payerId, amount, note, splitAmong, createdAt: Date.now() }); });
+    if (id) {
+      mutate(ev => { const ex = ev.expenses.find(x => x.id === id); if (ex) Object.assign(ex, { payerId, amount, note, splitAmong }); });
+    } else {
+      mutate(ev => { ev.expenses.push({ id: uid(), payerId, amount, note, splitAmong, createdAt: Date.now() }); });
+    }
     state.ui.expenseModal = false; render();
   } else if (act === "deleteExpense") {
     mutate(ev => { ev.expenses = ev.expenses.filter(x => x.id !== id); });
@@ -753,8 +791,9 @@ document.addEventListener("click", e => {
     const methodSel = document.getElementById("arrivalMethodSelect").value;
     const otherInput = document.getElementById("arrivalMethodOther");
     const method = methodSel === "其他" ? (otherInput ? otherInput.value.trim() : "") : methodSel;
+    const location = document.getElementById("arrivalLocationInput").value.trim();
     const eta = document.getElementById("arrivalTimeInput").value;
-    mutate(ev => { ev.arrivals[id] = { method, eta }; });
+    mutate(ev => { ev.arrivals[id] = { method, location, eta }; });
     state.ui.arrivalModalFor = null; state.ui.arrivalMethodTemp = null; render();
   }
 });
