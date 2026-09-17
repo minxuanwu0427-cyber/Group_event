@@ -276,7 +276,7 @@ function renderRoomsTab() {
       const members = e.people.filter(p => e.roomAssignments[p.id] === r.id);
       const full = r.capacity && members.length >= r.capacity;
       const mine = e.roomAssignments[state.currentUserId] === r.id;
-      html += '<div class="room-card' + (full ? ' full' : '') + (mine ? ' mine' : '') + '">';
+      html += '<div class="room-card' + (full ? ' full' : '') + (mine ? ' mine-room' : '') + '">';
       html += '<div class="row"><strong>' + esc(r.name) + (mine ? ' <span class="chip">我在這</span>' : '') + '</strong>' +
         '<span class="chip' + (full ? ' warn' : ' neutral') + '">' + members.length + (r.capacity ? "/" + r.capacity : "") + ' 人</span></div>';
       if (org) html += '<div style="margin-top:6px;"><button class="btn ghost small" data-act="editRoom" data-id="' + r.id + '">編輯</button>' +
@@ -326,7 +326,7 @@ function renderRoomsTab() {
       const members = e.people.filter(p => e.vehicleAssignments[p.id] === v.id);
       const full = v.capacity && members.length >= v.capacity;
       const mine = e.vehicleAssignments[state.currentUserId] === v.id;
-      html += '<div class="room-card' + (full ? ' full' : '') + (mine ? ' mine' : '') + '">';
+      html += '<div class="room-card' + (full ? ' full' : '') + (mine ? ' mine-vehicle' : '') + '">';
       html += '<div class="row"><strong>' + esc(v.name) + (mine ? ' <span class="chip">我在這</span>' : '') + '</strong>' +
         '<span class="chip' + (full ? ' warn' : ' neutral') + '">' + members.length + (v.capacity ? "/" + v.capacity : "") + ' 人</span></div>';
       if (org) html += '<div style="margin-top:6px;"><button class="btn ghost small" data-act="editVehicle" data-id="' + v.id + '">編輯</button>' +
