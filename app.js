@@ -229,7 +229,7 @@ function renderOverview() {
   html += '<div class="section-title">我的分配</div>';
   html += '<div class="stat-grid">';
   html += statTile("t-cream", "🛏️", myRoom ? myRoom.name : "未分房", "住哪房", "rooms", "room");
-  html += statTile("t-blue", "🚗", myVehicle ? myVehicle.name : "未分配", "怎麼行動", "rooms", "vehicle");
+  html += statTile("t-pink", "🚗", myVehicle ? myVehicle.name : "未分配", "怎麼行動", "rooms", "vehicle");
   let taskValue;
   if (!myTasks.length) taskValue = ["未分配"];
   else taskValue = myTasks.map(it => it.label);
@@ -242,7 +242,7 @@ function renderOverview() {
   if (myPay.length) feeValue = myPay.map(s => "付" + personName(s.to) + " $" + fmtMoney(s.amount));
   else if (myReceive.length) feeValue = myReceive.map(s => "收" + personName(s.from) + " $" + fmtMoney(s.amount));
   else feeValue = ["已結清"];
-  html += statTile("t-pink", "💰", feeValue, "目前費用", "expense");
+  html += statTile("t-blue", "💰", feeValue, "目前費用", "expense");
   html += '</div>';
 
   html += '<p style="text-align:center;margin-top:16px;"><button class="btn ghost small" data-act="switchIdentity">不是你？切換身分</button></p>';
@@ -277,7 +277,7 @@ function renderRoomsTab() {
       const full = r.capacity && members.length >= r.capacity;
       const mine = e.roomAssignments[state.currentUserId] === r.id;
       html += '<div class="room-card' + (full ? ' full' : '') + (mine ? ' mine-room' : '') + '">';
-      html += '<div class="row"><strong>' + esc(r.name) + (mine ? ' <span class="chip">我在這</span>' : '') + '</strong>' +
+      html += '<div class="row"><strong>' + esc(r.name) + '</strong>' +
         '<span class="chip' + (full ? ' warn' : ' neutral') + '">' + members.length + (r.capacity ? "/" + r.capacity : "") + ' 人</span></div>';
       if (org) html += '<div style="margin-top:6px;"><button class="btn ghost small" data-act="editRoom" data-id="' + r.id + '">編輯</button>' +
         '<button class="btn ghost small" data-act="deleteRoom" data-id="' + r.id + '">刪除</button></div>';
@@ -327,7 +327,7 @@ function renderRoomsTab() {
       const full = v.capacity && members.length >= v.capacity;
       const mine = e.vehicleAssignments[state.currentUserId] === v.id;
       html += '<div class="room-card' + (full ? ' full' : '') + (mine ? ' mine-vehicle' : '') + '">';
-      html += '<div class="row"><strong>' + esc(v.name) + (mine ? ' <span class="chip">我在這</span>' : '') + '</strong>' +
+      html += '<div class="row"><strong>' + esc(v.name) + '</strong>' +
         '<span class="chip' + (full ? ' warn' : ' neutral') + '">' + members.length + (v.capacity ? "/" + v.capacity : "") + ' 人</span></div>';
       if (org) html += '<div style="margin-top:6px;"><button class="btn ghost small" data-act="editVehicle" data-id="' + v.id + '">編輯</button>' +
         '<button class="btn ghost small" data-act="deleteVehicle" data-id="' + v.id + '">刪除</button></div>';
