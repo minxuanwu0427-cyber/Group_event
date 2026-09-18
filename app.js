@@ -26,7 +26,7 @@ const DEFAULT_EVENT = {
   announcement: "",       // 頂部跑馬燈公告文字
   infoBlocks: [
     { id: "i1", title: "住宿注意事項", content: "" },
-    { id: "i2", title: "行程重點", content: "" }
+    { id: "i2", title: "行程重點", content: "", category: "itinerary" }
   ],
   expenses: []            // {id, payerId, amount, note, splitAmong:[personId], createdAt}
 };
@@ -35,7 +35,7 @@ const state = {
   eventCode: localStorage.getItem(CODE_KEY) || null,
   event: undefined,       // undefined=載入中 / null=此代號尚未建立 / object=正常資料
   currentUserId: null,
-  ui: { tab: "overview", expenseModal: false, infoEditId: null, rosterOpen: false, roomsSubTab: "room", viewMode: false, arrivalModalFor: null, arrivalMethodTemp: null, arrivalsOpen: false, balancesOpen: false, unassignedRoomsOpen: false, unassignedVehiclesOpen: false, expensesOpen: false, settlementModalOpen: false, prepTaskModalFor: null, meetupOpen: false, meetupGroupModalFor: null, finalMeetupModalOpen: false, organizerModalOpen: false }
+  ui: { tab: "overview", expenseModal: false, infoEditId: null, rosterOpen: false, roomsSubTab: "room", infoSubTab: "itinerary", viewMode: false, arrivalModalFor: null, arrivalMethodTemp: null, arrivalsOpen: false, balancesOpen: false, unassignedRoomsOpen: false, unassignedVehiclesOpen: false, expensesOpen: false, settlementModalOpen: false, prepTaskModalFor: null, meetupOpen: false, meetupGroupModalFor: null, finalMeetupModalOpen: false, organizerModalOpen: false }
 };
 
 function uid() { return "id_" + Math.random().toString(36).slice(2, 10); }
@@ -155,6 +155,7 @@ function normalizeEvent(data) {
     return Object.assign({}, it, { assigneeIds: it.assigneeId ? [it.assigneeId] : [] });
   });
   e.infoBlocks = Array.isArray(data.infoBlocks) ? data.infoBlocks : DEFAULT_EVENT.infoBlocks;
+  e.infoBlocks = e.infoBlocks.map(b => b.id === "i1" ? b : Object.assign({}, b, { category: b.category === "activity" ? "activity" : "itinerary" }));
   e.expenses = Array.isArray(data.expenses) ? data.expenses : [];
   return e;
 }
@@ -665,9 +666,13 @@ function renderInfoBlock(b) {
 function renderInfoTab() {
   const e = state.event;
   const org = canManage();
-  let html = "";
-  e.infoBlocks.filter(b => b.id !== "i1").forEach(b => { html += renderInfoBlock(b); });
-  if (org) html += '<p style="text-align:center;"><button class="btn secondary small" data-act="addInfoBlock">＋新增區塊</button></p>';
+  const sub = state.ui.infoSubTab || "itinerary";
+  let html = '<div class="sub-tabs">';
+  html += '<button class="' + (sub === "itinerary" ? "active" : "") + '" data-act="setInfoSubTab" data-v="itinerary">🗺️ 行程</button>';
+  html += '<button class="' + (sub === "activity" ? "active" : "") + '" data-act="setInfoSubTab" data-v="activity">🎯 活動</button>';
+  html += '</div>';
+  e.infoBlocks.filter(b => b.id !== "i1" && (b.category || "itinerary") === sub).forEach(b => { html += renderInfoBlock(b); });
+  if (org) html += '<p style="text-align:center;"><button class="btn secondary small" data-act="addInfoBlock" data-cat="' + sub + '">＋新增區塊</button></p>';
   return html;
 }
 
@@ -1037,7 +1042,10 @@ document.addEventListener("click", e => {
     state.ui.infoEditId = null;
   } else if (act === "addInfoBlock") {
     const title = window.prompt("區塊標題（例如：交通方式）"); if (!title) return;
-    mutate(ev => { ev.infoBlocks.push({ id: uid(), title, content: "" }); });
+    const category = el.dataset.cat === "activity" ? "activity" : "itinerary";
+    mutate(ev => { ev.infoBlocks.push({ id: uid(), title, content: "", category }); });
+  } else if (act === "setInfoSubTab") {
+    state.ui.infoSubTab = el.dataset.v; render();
   } else if (act === "openExpenseModal") {
     state.ui.expenseModal = true; render();
   } else if (act === "editExpense") {
