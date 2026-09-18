@@ -188,6 +188,19 @@ textarea.input { min-height: 80px; resize: vertical; }
 .matrix .yes { color: var(--color-mint-text); font-weight: 700; }
 .matrix .no { color: #CBD6C9; }
 
+.mention-link { color: var(--color-accent); font-weight: 700; cursor: pointer; text-decoration: underline; text-decoration-style: dotted; }
+.mention-picker {
+  position: fixed; z-index: 40; background: white; border-radius: var(--radius-sm);
+  box-shadow: 0 8px 24px rgba(0,0,0,.18); max-height: 200px; overflow-y: auto; padding: 6px;
+}
+.mention-picker button {
+  display: block; width: 100%; text-align: left; border: none; background: none;
+  padding: 9px 10px; font-size: 14px; font-family: inherit; border-radius: 10px; color: var(--color-text);
+}
+.mention-picker button:active { background: #EEF3E8; }
+@keyframes mention-flash { 0% { box-shadow: inset 0 0 0 2px var(--color-accent); } 100% { box-shadow: inset 0 0 0 2px transparent; } }
+.mention-jump-flash { animation: mention-flash 1.4s ease; }
+
 .balance-row { display: flex; justify-content: space-between; padding: 9px 0; border-bottom: 1px solid var(--color-divider); font-size: 14px; }
 .balance-row:last-child { border-bottom: none; }
 .balance-row .amt.pos { color: var(--color-mint-text); font-weight: 700; }
