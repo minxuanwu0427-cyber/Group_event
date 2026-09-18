@@ -35,7 +35,7 @@ const state = {
   eventCode: localStorage.getItem(CODE_KEY) || null,
   event: undefined,       // undefined=載入中 / null=此代號尚未建立 / object=正常資料
   currentUserId: null,
-  ui: { tab: "overview", expenseModal: false, infoEditId: null, rosterOpen: false, roomsSubTab: "room", infoSubTab: "itinerary", accommodationOpen: false, viewMode: false, arrivalModalFor: null, arrivalMethodTemp: null, arrivalsOpen: false, balancesOpen: false, unassignedRoomsOpen: false, unassignedVehiclesOpen: false, expensesOpen: false, settlementModalOpen: false, prepTaskModalFor: null, meetupOpen: false, meetupGroupModalFor: null, finalMeetupModalOpen: false, organizerModalOpen: false }
+  ui: { tab: "overview", expenseModal: false, infoEditId: null, rosterOpen: false, roomsSubTab: "room", infoSubTab: "itinerary", accommodationOpen: false, photoViewer: null, viewMode: false, arrivalModalFor: null, arrivalMethodTemp: null, arrivalsOpen: false, balancesOpen: false, unassignedRoomsOpen: false, unassignedVehiclesOpen: false, expensesOpen: false, settlementModalOpen: false, prepTaskModalFor: null, meetupOpen: false, meetupGroupModalFor: null, finalMeetupModalOpen: false, organizerModalOpen: false }
 };
 
 function uid() { return "id_" + Math.random().toString(36).slice(2, 10); }
@@ -155,7 +155,10 @@ function normalizeEvent(data) {
     return Object.assign({}, it, { assigneeIds: it.assigneeId ? [it.assigneeId] : [] });
   });
   e.infoBlocks = Array.isArray(data.infoBlocks) ? data.infoBlocks : DEFAULT_EVENT.infoBlocks;
-  e.infoBlocks = e.infoBlocks.map(b => b.id === "i1" ? b : Object.assign({}, b, { category: b.category === "activity" ? "activity" : "itinerary" }));
+  e.infoBlocks = e.infoBlocks.map(b => {
+    const photos = Array.isArray(b.photos) ? b.photos : [];
+    return b.id === "i1" ? Object.assign({}, b, { photos }) : Object.assign({}, b, { category: b.category === "activity" ? "activity" : "itinerary", photos });
+  });
   e.expenses = Array.isArray(data.expenses) ? data.expenses : [];
   return e;
 }
@@ -665,13 +668,39 @@ function renderInfoBlock(b, collapsible) {
     const rows = Math.max(8, (b.content || "").split("\n").length + 2);
     html += '<textarea class="input" rows="' + rows + '" data-act="editInfoContent" data-id="' + b.id + '" style="overflow:hidden;" oninput="autoGrowTextarea(this);maybeOpenMentionPicker(this,event);">' + esc(b.content) + '</textarea>';
     html += '<p class="empty-hint" style="text-align:left;margin-top:4px;">輸入 @ 可以插入活動頁的連結</p>';
+    html += renderPhotoGrid(b, true);
     html += '<button class="btn danger small" style="margin-top:8px;" data-act="deleteInfoBlock" data-id="' + b.id + '">刪除這個區塊</button>';
   } else {
     html += b.content
       ? '<p style="margin-top:8px;font-size:14px;white-space:pre-wrap;">' + renderContentWithMentions(b.content) + '</p>'
       : '<p class="empty-hint">尚未填寫</p>';
+    html += renderPhotoGrid(b, false);
   }
   html += '</div>';
+  return html;
+}
+
+function renderPhotoGrid(b, editable) {
+  const photos = b.photos || [];
+  if (!photos.length && !editable) return "";
+  let html = "";
+  if (photos.length) {
+    html += '<div class="chip-grid grid-3" style="margin-top:8px;">';
+    photos.forEach((src, i) => {
+      html += '<div class="photo-thumb-wrap"><img class="photo-thumb" src="' + src + '" data-act="viewPhoto" data-id="' + b.id + '" data-idx="' + i + '">' +
+        (editable ? '<span class="x-remove photo-remove" data-act="deletePhoto" data-id="' + b.id + '" data-idx="' + i + '">✕</span>' : '') +
+        '</div>';
+    });
+    html += '</div>';
+  }
+  if (editable) {
+    if (photos.length < 3) {
+      html += '<label class="btn ghost small" style="display:inline-block;margin-top:8px;">＋新增照片' +
+        '<input type="file" accept="image/*" style="display:none;" onchange="handlePhotoUpload(this,\'' + b.id + '\')"></label>';
+    } else {
+      html += '<p class="empty-hint" style="margin-top:6px;">最多 3 張照片</p>';
+    }
+  }
   return html;
 }
 
@@ -752,6 +781,54 @@ function insertMention(textareaEl, title) {
   textareaEl.setSelectionRange(newCaret, newCaret);
   autoGrowTextarea(textareaEl);
   closeMentionPicker();
+}
+
+/* -------------------------------- 區塊照片 -------------------------------- */
+function handlePhotoUpload(inputEl, blockId) {
+  const file = inputEl.files && inputEl.files[0];
+  inputEl.value = "";
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function (ev) {
+    const img = new Image();
+    img.onload = function () {
+      const maxDim = 1000;
+      let w = img.width, h = img.height;
+      if (w > maxDim || h > maxDim) {
+        if (w > h) { h = Math.round(h * maxDim / w); w = maxDim; }
+        else { w = Math.round(w * maxDim / h); h = maxDim; }
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = w; canvas.height = h;
+      canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.6);
+      mutate(ev2 => {
+        const blk = ev2.infoBlocks.find(x => x.id === blockId);
+        if (!blk) return;
+        blk.photos = Array.isArray(blk.photos) ? blk.photos : [];
+        if (blk.photos.length < 3) blk.photos.push(dataUrl);
+      });
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function renderPhotoViewerModal() {
+  const pv = state.ui.photoViewer;
+  const blk = state.event.infoBlocks.find(x => x.id === pv.id);
+  if (!blk || !blk.photos || !blk.photos.length) { state.ui.photoViewer = null; return ""; }
+  const idx = Math.max(0, Math.min(pv.idx, blk.photos.length - 1));
+  let html = '<div class="modal-backdrop" style="align-items:center;">';
+  html += '<div class="photo-viewer-wrap">';
+  html += '<img class="photo-viewer-img" src="' + blk.photos[idx] + '">';
+  if (blk.photos.length > 1) {
+    html += '<button class="photo-nav prev" data-act="photoNav" data-dir="-1">‹</button>';
+    html += '<button class="photo-nav next" data-act="photoNav" data-dir="1">›</button>';
+    html += '<div class="photo-viewer-count">' + (idx + 1) + ' / ' + blk.photos.length + '</div>';
+  }
+  html += '</div></div>';
+  return html;
 }
 function renderInfoTab() {
   const e = state.event;
@@ -948,13 +1025,14 @@ function render() {
   if (state.ui.meetupGroupModalFor) html += renderMeetupGroupModal();
   if (state.ui.finalMeetupModalOpen) html += renderFinalMeetupModal();
   if (state.ui.organizerModalOpen) html += renderOrganizerModal();
+  if (state.ui.photoViewer) html += renderPhotoViewerModal();
   app.innerHTML = html;
 }
 
 /* -------------------------------- 事件委派 -------------------------------- */
 document.addEventListener("click", e => {
   if (e.target.classList && e.target.classList.contains("modal-backdrop")) {
-    state.ui.expenseModal = false; state.ui.arrivalModalFor = null; state.ui.arrivalMethodTemp = null; state.ui.settlementModalOpen = false; state.ui.prepTaskModalFor = null; state.ui.meetupGroupModalFor = null; state.ui.finalMeetupModalOpen = false; state.ui.organizerModalOpen = false; render(); return;
+    state.ui.expenseModal = false; state.ui.arrivalModalFor = null; state.ui.arrivalMethodTemp = null; state.ui.settlementModalOpen = false; state.ui.prepTaskModalFor = null; state.ui.meetupGroupModalFor = null; state.ui.finalMeetupModalOpen = false; state.ui.organizerModalOpen = false; state.ui.photoViewer = null; render(); return;
   }
   const el = e.target.closest("[data-act]");
   if (!el) return;
@@ -1135,7 +1213,7 @@ document.addEventListener("click", e => {
   } else if (act === "addInfoBlock") {
     const title = window.prompt("區塊標題（例如：交通方式）"); if (!title) return;
     const category = el.dataset.cat === "activity" ? "activity" : "itinerary";
-    mutate(ev => { ev.infoBlocks.push({ id: uid(), title, content: "", category }); });
+    mutate(ev => { ev.infoBlocks.push({ id: uid(), title, content: "", category, photos: [] }); });
   } else if (act === "setInfoSubTab") {
     state.ui.infoSubTab = el.dataset.v; render();
   } else if (act === "jumpToActivity") {
@@ -1147,6 +1225,21 @@ document.addEventListener("click", e => {
       target.classList.add("mention-jump-flash");
       setTimeout(() => target.classList.remove("mention-jump-flash"), 1400);
     }, 60);
+  } else if (act === "viewPhoto") {
+    state.ui.photoViewer = { id: id, idx: Number(el.dataset.idx) }; render();
+  } else if (act === "deletePhoto") {
+    const idx = Number(el.dataset.idx);
+    mutate(ev => { const blk = ev.infoBlocks.find(x => x.id === id); if (blk && Array.isArray(blk.photos)) blk.photos.splice(idx, 1); });
+  } else if (act === "photoNav") {
+    const dir = Number(el.dataset.dir);
+    const blk = state.event.infoBlocks.find(x => x.id === state.ui.photoViewer.id);
+    if (blk && blk.photos && blk.photos.length) {
+      let idx = state.ui.photoViewer.idx + dir;
+      if (idx < 0) idx = blk.photos.length - 1;
+      if (idx >= blk.photos.length) idx = 0;
+      state.ui.photoViewer.idx = idx;
+    }
+    render();
   } else if (act === "openExpenseModal") {
     state.ui.expenseModal = true; render();
   } else if (act === "editExpense") {
