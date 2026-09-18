@@ -35,7 +35,7 @@ const state = {
   eventCode: localStorage.getItem(CODE_KEY) || null,
   event: undefined,       // undefined=載入中 / null=此代號尚未建立 / object=正常資料
   currentUserId: null,
-  ui: { tab: "overview", expenseModal: false, infoEditId: null, rosterOpen: false, roomsSubTab: "room", infoSubTab: "itinerary", viewMode: false, arrivalModalFor: null, arrivalMethodTemp: null, arrivalsOpen: false, balancesOpen: false, unassignedRoomsOpen: false, unassignedVehiclesOpen: false, expensesOpen: false, settlementModalOpen: false, prepTaskModalFor: null, meetupOpen: false, meetupGroupModalFor: null, finalMeetupModalOpen: false, organizerModalOpen: false }
+  ui: { tab: "overview", expenseModal: false, infoEditId: null, rosterOpen: false, roomsSubTab: "room", infoSubTab: "itinerary", accommodationOpen: false, viewMode: false, arrivalModalFor: null, arrivalMethodTemp: null, arrivalsOpen: false, balancesOpen: false, unassignedRoomsOpen: false, unassignedVehiclesOpen: false, expensesOpen: false, settlementModalOpen: false, prepTaskModalFor: null, meetupOpen: false, meetupGroupModalFor: null, finalMeetupModalOpen: false, organizerModalOpen: false }
 };
 
 function uid() { return "id_" + Math.random().toString(36).slice(2, 10); }
@@ -421,7 +421,7 @@ function renderRoomsTab() {
 
   if (sub === "room") {
     const accommodationBlock = e.infoBlocks.find(b => b.id === "i1");
-    if (accommodationBlock) html += renderInfoBlock(accommodationBlock);
+    if (accommodationBlock) html += renderInfoBlock(accommodationBlock, true);
 
     html += '<div class="card card-bordered">';
     html += '<div class="row"><h2>房間分配</h2>' + (org ? '<button class="btn ghost small" data-act="addRoom">＋新增房間</button>' : '') + '</div>';
@@ -644,32 +644,122 @@ function renderPrepTaskModal() {
 }
 
 /* -------------------------------- 行程 / 住宿注意事項 -------------------------------- */
-function renderInfoBlock(b) {
+function renderInfoBlock(b, collapsible) {
   const org = canManage();
   const editing = state.ui.infoEditId === b.id;
-  let html = '<div class="card card-bordered">';
-  html += '<div class="row"><h2>' + esc(b.title) + '</h2>' +
-    (org ? '<button class="btn ghost small" data-act="toggleInfoEdit" data-id="' + b.id + '">' + (editing ? "完成" : "編輯") + '</button>' : '') + '</div>';
+  const open = !collapsible || state.ui.accommodationOpen;
+  let html = '<div class="card card-bordered" id="info-block-' + b.id + '">';
+  if (collapsible) {
+    html += '<div class="row" data-act="toggleAccommodation" style="cursor:pointer;">' +
+      '<h2>' + esc(b.title) + '</h2><span class="chip neutral">' + (open ? "收合" : "展開") + '</span></div>';
+  } else {
+    html += '<div class="row"><h2>' + esc(b.title) + '</h2>' +
+      (org ? '<button class="btn ghost small" data-act="toggleInfoEdit" data-id="' + b.id + '">' + (editing ? "完成" : "編輯") + '</button></div>' : '</div>');
+  }
+  if (!open) { html += '</div>'; return html; }
+  if (collapsible && org) {
+    html += '<div style="text-align:right;margin-top:4px;"><button class="btn ghost small" data-act="toggleInfoEdit" data-id="' + b.id + '">' + (editing ? "完成" : "編輯") + '</button></div>';
+  }
   if (editing) {
     html += '<input class="input" style="margin:8px 0;" data-act="editInfoTitle" data-id="' + b.id + '" value="' + esc(b.title) + '">';
     const rows = Math.max(8, (b.content || "").split("\n").length + 2);
-    html += '<textarea class="input" rows="' + rows + '" data-act="editInfoContent" data-id="' + b.id + '" style="overflow:hidden;" oninput="this.style.height=\'auto\';this.style.height=this.scrollHeight+\'px\';">' + esc(b.content) + '</textarea>';
+    html += '<textarea class="input" rows="' + rows + '" data-act="editInfoContent" data-id="' + b.id + '" style="overflow:hidden;" oninput="autoGrowTextarea(this);maybeOpenMentionPicker(this,event);">' + esc(b.content) + '</textarea>';
+    html += '<p class="empty-hint" style="text-align:left;margin-top:4px;">輸入 @ 可以插入活動頁的連結</p>';
     html += '<button class="btn danger small" style="margin-top:8px;" data-act="deleteInfoBlock" data-id="' + b.id + '">刪除這個區塊</button>';
   } else {
     html += b.content
-      ? '<p style="margin-top:8px;font-size:14px;white-space:pre-wrap;">' + esc(b.content) + '</p>'
+      ? '<p style="margin-top:8px;font-size:14px;white-space:pre-wrap;">' + renderContentWithMentions(b.content) + '</p>'
       : '<p class="empty-hint">尚未填寫</p>';
   }
   html += '</div>';
   return html;
+}
+
+function renderContentWithMentions(text) {
+  const e = state.event;
+  const activityBlocks = (e.infoBlocks || []).filter(b => b.id !== "i1" && b.category === "activity" && b.title);
+  if (!text || !activityBlocks.length) return esc(text);
+  const titles = activityBlocks.map(b => b.title).sort((a, b) => b.length - a.length);
+  const escapedTitles = titles.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  const re = new RegExp("@(" + escapedTitles.join("|") + ")", "g");
+  let result = "", lastIndex = 0, m;
+  while ((m = re.exec(text))) {
+    result += esc(text.slice(lastIndex, m.index));
+    const block = activityBlocks.find(b => b.title === m[1]);
+    result += '<span class="mention-link" data-act="jumpToActivity" data-id="' + block.id + '">@' + esc(m[1]) + '</span>';
+    lastIndex = m.index + m[0].length;
+  }
+  result += esc(text.slice(lastIndex));
+  return result;
+}
+
+/* -------------------------------- @提及 選單 -------------------------------- */
+function autoGrowTextarea(el) { el.style.height = "auto"; el.style.height = el.scrollHeight + "px"; }
+
+function closeMentionPicker() {
+  const existing = document.getElementById("mention-picker");
+  if (existing) existing.remove();
+  document.removeEventListener("mousedown", handleMentionPickerOutsideClick, true);
+}
+
+function handleMentionPickerOutsideClick(e) {
+  const picker = document.getElementById("mention-picker");
+  if (picker && !picker.contains(e.target)) closeMentionPicker();
+}
+
+function maybeOpenMentionPicker(textareaEl, ev) {
+  if (ev && ev.data === "@") openMentionPicker(textareaEl);
+}
+
+function openMentionPicker(textareaEl) {
+  closeMentionPicker();
+  const e = state.event;
+  const activityBlocks = (e.infoBlocks || []).filter(b => b.id !== "i1" && b.category === "activity" && b.title);
+  const rect = textareaEl.getBoundingClientRect();
+  const picker = document.createElement("div");
+  picker.className = "mention-picker";
+  picker.id = "mention-picker";
+  picker.style.left = rect.left + "px";
+  picker.style.width = rect.width + "px";
+  const spaceBelow = window.innerHeight - rect.bottom;
+  if (spaceBelow < 220) { picker.style.bottom = (window.innerHeight - rect.top + 4) + "px"; }
+  else { picker.style.top = (rect.bottom + 4) + "px"; }
+
+  if (!activityBlocks.length) {
+    picker.innerHTML = '<div class="empty-hint" style="padding:8px;">尚未建立活動區塊，先到「活動」分頁新增</div>';
+  } else {
+    activityBlocks.forEach(b => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.textContent = b.title;
+      btn.onmousedown = function (ev) { ev.preventDefault(); insertMention(textareaEl, b.title); };
+      picker.appendChild(btn);
+    });
+  }
+  document.body.appendChild(picker);
+  setTimeout(() => document.addEventListener("mousedown", handleMentionPickerOutsideClick, true), 0);
+}
+
+function insertMention(textareaEl, title) {
+  const caret = textareaEl.selectionStart;
+  const value = textareaEl.value;
+  const atPos = value.lastIndexOf("@", caret - 1);
+  if (atPos === -1) { closeMentionPicker(); return; }
+  const newValue = value.slice(0, atPos) + "@" + title + " " + value.slice(caret);
+  textareaEl.value = newValue;
+  const newCaret = atPos + 1 + title.length + 1;
+  textareaEl.focus();
+  textareaEl.setSelectionRange(newCaret, newCaret);
+  autoGrowTextarea(textareaEl);
+  closeMentionPicker();
 }
 function renderInfoTab() {
   const e = state.event;
   const org = canManage();
   const sub = state.ui.infoSubTab || "itinerary";
   let html = '<div class="sub-tabs">';
-  html += '<button class="' + (sub === "itinerary" ? "active" : "") + '" data-act="setInfoSubTab" data-v="itinerary">🗺️ 行程</button>';
-  html += '<button class="' + (sub === "activity" ? "active" : "") + '" data-act="setInfoSubTab" data-v="activity">🎯 活動</button>';
+  html += '<button class="' + (sub === "itinerary" ? "active" : "") + '" data-act="setInfoSubTab" data-v="itinerary">📋 行程</button>';
+  html += '<button class="' + (sub === "activity" ? "active" : "") + '" data-act="setInfoSubTab" data-v="activity">🎳 活動</button>';
   html += '</div>';
   e.infoBlocks.filter(b => b.id !== "i1" && (b.category || "itinerary") === sub).forEach(b => { html += renderInfoBlock(b); });
   if (org) html += '<p style="text-align:center;"><button class="btn secondary small" data-act="addInfoBlock" data-cat="' + sub + '">＋新增區塊</button></p>';
@@ -916,6 +1006,8 @@ document.addEventListener("click", e => {
     state.ui.settlementModalOpen = false; render();
   } else if (act === "toggleRoster") {
     state.ui.rosterOpen = !state.ui.rosterOpen; render();
+  } else if (act === "toggleAccommodation") {
+    state.ui.accommodationOpen = !state.ui.accommodationOpen; render();
   } else if (act === "editTitle") {
     const t = window.prompt("旅行名稱", state.event.title);
     if (t && t.trim()) mutate(ev => { ev.title = t.trim(); });
@@ -1046,6 +1138,15 @@ document.addEventListener("click", e => {
     mutate(ev => { ev.infoBlocks.push({ id: uid(), title, content: "", category }); });
   } else if (act === "setInfoSubTab") {
     state.ui.infoSubTab = el.dataset.v; render();
+  } else if (act === "jumpToActivity") {
+    state.ui.tab = "info"; state.ui.infoSubTab = "activity"; render();
+    setTimeout(() => {
+      const target = document.getElementById("info-block-" + id);
+      if (!target) return;
+      target.scrollIntoView({ behavior: "smooth", block: "center" });
+      target.classList.add("mention-jump-flash");
+      setTimeout(() => target.classList.remove("mention-jump-flash"), 1400);
+    }, 60);
   } else if (act === "openExpenseModal") {
     state.ui.expenseModal = true; render();
   } else if (act === "editExpense") {
