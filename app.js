@@ -71,9 +71,9 @@ function computeCountdown(td) {
   today.setHours(0, 0, 0, 0);
   start.setHours(0, 0, 0, 0);
   const diff = Math.round((start - today) / 86400000);
-  if (diff > 0) return "D-" + diff;
-  if (diff === 0) return "D-DAY";
-  return "D+" + Math.abs(diff);
+  if (diff > 0) return "倒數D-" + diff;
+  if (diff === 0) return "倒數D-DAY";
+  return "倒數D+" + Math.abs(diff);
 }
 let marqueeShownText = null;
 function updateMarquee() {
@@ -814,13 +814,25 @@ function renderTabbar() {
   return html;
 }
 
+function renderHeaderBar() {
+  return '<div class="header"><div>' +
+    '<div class="greet-small">Hi, ' + esc(me().name) + (canManage() ? "（主揪）" : "") + '</div>' +
+    '<h1 ' + (canManage() ? 'data-act="editTitle" style="cursor:pointer;"' : '') + '>' + esc(state.event.title) + '</h1>' +
+    '<div class="trip-date-line" ' + (canManage() ? 'data-act="editTripDates" style="cursor:pointer;"' : '') + '>📅 ' + esc(formatTripDates(state.event.tripDates)) + '</div></div>' +
+    '<div style="display:flex;flex-direction:column;align-items:center;gap:4px;">' +
+    '<div class="avatar-badge">' + avatarText(me()) + '</div>' +
+    (isOrganizer() ? '<button class="btn ghost small" style="padding:2px 8px;font-size:11px;" data-act="toggleViewMode">' + (state.ui.viewMode ? "編輯" : "檢視") + '</button>' : '') +
+    '</div></div>';
+}
+
 function render() {
   const app = document.getElementById("app");
+  const headerRoot = document.getElementById("header-root");
   updateMarquee();
-  if (!state.eventCode) { app.innerHTML = renderCodeEntryScreen(); return; }
-  if (state.event === undefined) { app.innerHTML = '<div class="empty-hint">載入中...</div>'; return; }
-  if (state.event === null) { app.innerHTML = renderCreateEventScreen(); return; }
-  if (!state.currentUserId || !me()) { app.innerHTML = renderIdentityScreen(); return; }
+  if (!state.eventCode) { headerRoot.innerHTML = ""; app.innerHTML = renderCodeEntryScreen(); return; }
+  if (state.event === undefined) { headerRoot.innerHTML = ""; app.innerHTML = '<div class="empty-hint">載入中...</div>'; return; }
+  if (state.event === null) { headerRoot.innerHTML = ""; app.innerHTML = renderCreateEventScreen(); return; }
+  if (!state.currentUserId || !me()) { headerRoot.innerHTML = ""; app.innerHTML = renderIdentityScreen(); return; }
   if (state.ui.tab === "prep" && !canManage()) state.ui.tab = "overview";
 
   let body = "";
@@ -830,15 +842,8 @@ function render() {
   else if (state.ui.tab === "info") body = renderInfoTab();
   else if (state.ui.tab === "expense") body = renderExpenseTab();
 
-  let html = '<div class="header"><div>' +
-    '<div class="greet-small">Hi, ' + esc(me().name) + (canManage() ? "（主揪）" : "") + '</div>' +
-    '<h1 ' + (canManage() ? 'data-act="editTitle" style="cursor:pointer;"' : '') + '>' + esc(state.event.title) + '</h1>' +
-    '<div class="trip-date-line" ' + (canManage() ? 'data-act="editTripDates" style="cursor:pointer;"' : '') + '>📅 ' + esc(formatTripDates(state.event.tripDates)) + '</div></div>' +
-    '<div style="display:flex;flex-direction:column;align-items:center;gap:4px;">' +
-    '<div class="avatar-badge">' + avatarText(me()) + '</div>' +
-    (isOrganizer() ? '<button class="btn ghost small" style="padding:2px 8px;font-size:11px;" data-act="toggleViewMode">' + (state.ui.viewMode ? "編輯" : "檢視") + '</button>' : '') +
-    '</div></div>';
-  html += body;
+  headerRoot.innerHTML = renderHeaderBar();
+  let html = body;
   if (state.ui.tab === "expense") html += '<button class="fab" data-act="openExpenseModal">＋</button>';
   html += renderTabbar();
   if (state.ui.expenseModal) html += renderExpenseModal();
