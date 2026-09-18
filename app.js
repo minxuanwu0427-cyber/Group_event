@@ -75,16 +75,34 @@ function computeCountdown(td) {
   if (diff === 0) return "D-DAY";
   return "D+" + Math.abs(diff);
 }
-function renderMarquee() {
+let marqueeShownText = null;
+function updateMarquee() {
+  const root = document.getElementById("marquee-root");
+  if (!root) return;
+  if (!state.event || typeof state.event !== "object" || !state.currentUserId || !me()) {
+    if (root.innerHTML) root.innerHTML = "";
+    marqueeShownText = null;
+    return;
+  }
   const e = state.event;
   const countdown = computeCountdown(e.tripDates);
   const text = [countdown, e.announcement].filter(Boolean).join("．");
   const editable = canManage();
   if (!text) {
-    if (!editable) return "";
-    return '<div class="marquee-bar marquee-empty" data-act="editAnnouncement" style="cursor:pointer;">點此新增公告</div>';
+    if (!editable) {
+      if (root.innerHTML) root.innerHTML = "";
+      marqueeShownText = null;
+      return;
+    }
+    if (marqueeShownText !== "__empty__") {
+      root.innerHTML = '<div class="marquee-bar marquee-empty" data-act="editAnnouncement" style="cursor:pointer;">點此新增公告</div>';
+      marqueeShownText = "__empty__";
+    }
+    return;
   }
-  return '<div class="marquee-bar" ' + (editable ? 'data-act="editAnnouncement" style="cursor:pointer;"' : '') + '><span>' + esc(text) + '</span></div>';
+  if (text === marqueeShownText && root.querySelector(".marquee-bar span")) return; // 內容沒變，維持原本正在跑的動畫，不重建
+  marqueeShownText = text;
+  root.innerHTML = '<div class="marquee-bar" ' + (editable ? 'data-act="editAnnouncement" style="cursor:pointer;"' : '') + '><span>' + esc(text) + '</span></div>';
 }
 function parseDateAny(s) { return new Date((s || "").trim().replace(/\//g, "-")); }
 function formatTripDates(td) {
@@ -332,11 +350,11 @@ function renderOverview() {
 
   html += '<div class="card card-bordered">';
   html += '<div class="row" data-act="toggleRoster" style="cursor:pointer;">' +
-    '<h2>👥 團員名單（' + e.people.length + '）</h2><span class="chip neutral">' + (state.ui.rosterOpen ? "收合" : "展開") + '</span></div>';
+    '<h2>團員名單（' + e.people.length + '）</h2><span class="chip neutral">' + (state.ui.rosterOpen ? "收合" : "展開") + '</span></div>';
   if (state.ui.rosterOpen) {
     html += '<div class="roster-grid">';
     roster.forEach(p => {
-      html += '<div class="roster-item"><div class="avatar small">' + avatarText(p) + '</div><span class="name">' + esc(p.name) + '</span></div>';
+      html += '<div class="roster-item"><div class="avatar small">' + avatarText(p) + '</div><span class="name">' + esc(p.name) + (p.isOrganizer ? ' 🙋🏻\u200d♂️' : '') + '</span></div>';
     });
     html += '</div>';
     if (canManage()) {
@@ -345,7 +363,7 @@ function renderOverview() {
         '<div><button class="btn ghost small" data-act="openOrganizerModal">設為主揪</button>' +
         '<button class="btn ghost small" data-act="addPersonPrompt">＋新增團員</button></div></div>';
       roster.forEach(p => {
-        html += '<div class="person-line"><div class="avatar small">' + avatarText(p) + '</div><span class="name">' + esc(p.name) + (p.isOrganizer ? ' 主揪' : '') + '</span>';
+        html += '<div class="person-line"><div class="avatar small">' + avatarText(p) + '</div><span class="name">' + esc(p.name) + (p.isOrganizer ? ' 🙋🏻\u200d♂️主揪' : '') + '</span>';
         html += '<button class="btn ghost small" data-act="editPerson" data-id="' + p.id + '" style="padding:4px 8px;">' +
           '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button>';
         if (p.id !== state.currentUserId) {
@@ -798,6 +816,7 @@ function renderTabbar() {
 
 function render() {
   const app = document.getElementById("app");
+  updateMarquee();
   if (!state.eventCode) { app.innerHTML = renderCodeEntryScreen(); return; }
   if (state.event === undefined) { app.innerHTML = '<div class="empty-hint">載入中...</div>'; return; }
   if (state.event === null) { app.innerHTML = renderCreateEventScreen(); return; }
@@ -819,7 +838,6 @@ function render() {
     '<div class="avatar-badge">' + avatarText(me()) + '</div>' +
     (isOrganizer() ? '<button class="btn ghost small" style="padding:2px 8px;font-size:11px;" data-act="toggleViewMode">' + (state.ui.viewMode ? "編輯" : "檢視") + '</button>' : '') +
     '</div></div>';
-  html += renderMarquee();
   html += body;
   if (state.ui.tab === "expense") html += '<button class="fab" data-act="openExpenseModal">＋</button>';
   html += renderTabbar();
