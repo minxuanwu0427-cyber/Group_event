@@ -201,6 +201,25 @@ textarea.input { min-height: 80px; resize: vertical; }
 @keyframes mention-flash { 0% { box-shadow: inset 0 0 0 2px var(--color-accent); } 100% { box-shadow: inset 0 0 0 2px transparent; } }
 .mention-jump-flash { animation: mention-flash 1.4s ease; }
 
+.photo-thumb-wrap { position: relative; }
+.photo-thumb { width: 100%; aspect-ratio: 1 / 1; object-fit: cover; border-radius: var(--radius-sm); cursor: pointer; display: block; }
+.photo-thumb-wrap .photo-remove {
+  position: absolute; top: -6px; right: -6px; background: white; border-radius: 50%;
+  width: 20px; height: 20px; display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 1px 4px rgba(0,0,0,.25); font-size: 11px;
+}
+.photo-viewer-wrap { position: relative; max-width: 90vw; max-height: 78vh; }
+.photo-viewer-img { max-width: 90vw; max-height: 78vh; border-radius: 12px; display: block; }
+.photo-nav {
+  position: absolute; top: 50%; transform: translateY(-50%); background: rgba(0,0,0,.45); color: white;
+  border: none; width: 36px; height: 36px; border-radius: 50%; font-size: 20px; line-height: 1;
+}
+.photo-nav.prev { left: 8px; } .photo-nav.next { right: 8px; }
+.photo-viewer-count {
+  position: absolute; bottom: -26px; left: 50%; transform: translateX(-50%);
+  color: white; font-size: 12.5px;
+}
+
 .balance-row { display: flex; justify-content: space-between; padding: 9px 0; border-bottom: 1px solid var(--color-divider); font-size: 14px; }
 .balance-row:last-child { border-bottom: none; }
 .balance-row .amt.pos { color: var(--color-mint-text); font-weight: 700; }
