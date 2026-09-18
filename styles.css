@@ -79,12 +79,14 @@ textarea.input { min-height: 80px; resize: vertical; }
 }
 .header .trip-date-line { font-size: 13px; color: var(--color-text-soft); margin-top: 4px; }
 
+#marquee-root { max-width: 480px; margin: 0 auto; }
+@media (min-width: 521px) { #marquee-root { padding-top: 12px; } }
 .marquee-bar {
-  background: var(--color-accent-dark); color: white; overflow: hidden; white-space: nowrap;
-  padding: 7px 0; font-size: 12.5px; margin: 4px calc(-1 * var(--space-4)) var(--space-3);
+  background: var(--color-pink); color: var(--color-pink-text); overflow: hidden; white-space: nowrap;
+  padding: 7px 0; font-size: 12.5px; font-weight: 600;
 }
 .marquee-bar span { display: inline-block; padding-left: 100%; animation: marquee-scroll 14s linear infinite; }
-.marquee-bar.marquee-empty { text-align: center; opacity: .7; font-size: 12px; }
+.marquee-bar.marquee-empty { text-align: center; opacity: .8; font-size: 12px; }
 @keyframes marquee-scroll {
   0% { transform: translateX(0); }
   100% { transform: translateX(-100%); }
