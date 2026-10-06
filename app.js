@@ -35,7 +35,7 @@ const state = {
   eventCode: localStorage.getItem(CODE_KEY) || null,
   event: undefined,       // undefined=載入中 / null=此代號尚未建立 / object=正常資料
   currentUserId: null,
-  ui: { tab: "overview", expenseModal: false, infoEditId: null, rosterOpen: false, roomsSubTab: "room", infoSubTab: "itinerary", accommodationOpen: false, photoViewer: null, viewMode: false, arrivalModalFor: null, arrivalMethodTemp: null, arrivalsOpen: false, balancesOpen: false, unassignedRoomsOpen: false, unassignedVehiclesOpen: false, expensesOpen: false, settlementModalOpen: false, prepTaskModalFor: null, meetupOpen: false, meetupGroupModalFor: null, finalMeetupModalOpen: false, organizerModalOpen: false }
+  ui: { tab: "overview", expenseModal: false, infoEditId: null, rosterOpen: false, roomsSubTab: "room", infoSubTab: "itinerary", accommodationOpen: false, photoViewer: null, viewMode: false, arrivalModalFor: null, arrivalMethodTemp: null, arrivalsOpen: false, balancesOpen: false, unassignedRoomsOpen: false, unassignedVehiclesOpen: false, expensesOpen: false, settlementModalOpen: false, prepTaskModalFor: null, meetupOpen: false, meetupGroupModalFor: null, finalMeetupModalOpen: false, organizerModalOpen: false, rosterModalOpen: false }
 };
 
 function uid() { return "id_" + Math.random().toString(36).slice(2, 10); }
@@ -142,6 +142,8 @@ function normalizeEvent(data) {
   e.meetup = Object.assign({}, DEFAULT_EVENT.meetup, data.meetup || {});
   e.meetupGroups = Array.isArray(data.meetupGroups) ? data.meetupGroups : [];
   e.people = Array.isArray(data.people) ? data.people : [];
+  if (!data.peopleOrdered) e.people = sortedRoster(e.people); // 第一次：沿用原本的顯示順序當作自訂順序起點
+  e.peopleOrdered = true;
   e.rooms = Array.isArray(data.rooms) ? data.rooms : [];
   e.roomAssignments = data.roomAssignments || {};
   e.vehicles = Array.isArray(data.vehicles) ? data.vehicles : [];
@@ -317,6 +319,28 @@ function renderMeetupGroupModal() {
   html += '</div></div>';
   return html;
 }
+function renderRosterModal() {
+  const e = state.event;
+  const pen = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
+  let html = '<div class="modal-backdrop"><div class="modal-sheet">';
+  html += '<h2>團員管理</h2>';
+  html += '<div class="row" style="margin-bottom:6px;"><div>' +
+    '<button class="btn ghost small" data-act="openOrganizerModal">設為主揪</button>' +
+    '<button class="btn ghost small" data-act="addPersonPrompt">＋新增團員</button></div></div>';
+  html += '<p style="font-size:12.5px;color:var(--color-text-soft);margin-bottom:6px;">用 ▲▼ 調整順序，所有名單與列表都會依此順序顯示</p>';
+  e.people.forEach((p, i) => {
+    html += '<div class="person-line"><div class="avatar small">' + avatarText(p) + '</div><span class="name">' + esc(p.name) + (p.isOrganizer ? ' 🙋🏻\u200d♂️主揪' : '') + '</span>';
+    html += '<button class="btn ghost small" data-act="movePerson" data-id="' + p.id + '" data-dir="-1" style="padding:4px 8px;"' + (i === 0 ? ' disabled' : '') + '>▲</button>';
+    html += '<button class="btn ghost small" data-act="movePerson" data-id="' + p.id + '" data-dir="1" style="padding:4px 8px;"' + (i === e.people.length - 1 ? ' disabled' : '') + '>▼</button>';
+    html += '<button class="btn ghost small" data-act="editPerson" data-id="' + p.id + '" style="padding:4px 8px;">' + pen + '</button>';
+    if (p.id !== state.currentUserId) html += '<button class="btn ghost small" data-act="removePerson" data-id="' + p.id + '">✕</button>';
+    html += '</div>';
+  });
+  if (!e.people.length) html += '<p class="empty-hint">尚無團員</p>';
+  html += '<button class="btn" style="width:100%;margin-top:12px;" data-act="closeRosterModal">完成</button>';
+  html += '</div></div>';
+  return html;
+}
 function renderOrganizerModal() {
   const e = state.event;
   let html = '<div class="modal-backdrop"><div class="modal-sheet">';
@@ -348,34 +372,22 @@ function renderOverview() {
   const myRoom = e.rooms.find(r => r.id === e.roomAssignments[state.currentUserId]);
   const myVehicle = e.vehicles.find(v => v.id === e.vehicleAssignments[state.currentUserId]);
   const myTasks = e.prepItems.filter(it => (it.assigneeIds || []).includes(state.currentUserId));
-  const roster = sortedRoster(e.people);
+  const roster = e.people;
 
   let html = renderMeetupCard();
 
   html += '<div class="card card-bordered">';
   html += '<div class="row" data-act="toggleRoster" style="cursor:pointer;">' +
-    '<h2>團員名單（' + e.people.length + '）</h2><span class="chip neutral">' + (state.ui.rosterOpen ? "收合" : "展開") + '</span></div>';
+    '<h2>團員名單（' + e.people.length + '）</h2>' +
+    '<div style="display:flex;align-items:center;gap:6px;">' +
+    (canManage() ? '<button class="btn ghost small" data-act="openRosterModal" style="padding:4px 10px;">團員管理</button>' : '') +
+    '<span class="chip neutral">' + (state.ui.rosterOpen ? "收合" : "展開") + '</span></div></div>';
   if (state.ui.rosterOpen) {
     html += '<div class="roster-grid">';
     roster.forEach(p => {
       html += '<div class="roster-item"><div class="avatar small">' + avatarText(p) + '</div><span class="name">' + esc(p.name) + (p.isOrganizer ? ' 🙋🏻\u200d♂️' : '') + '</span></div>';
     });
     html += '</div>';
-    if (canManage()) {
-      html += '<div class="divider"></div>';
-      html += '<div class="row"><span class="section-title" style="margin:0;">團員管理</span>' +
-        '<div><button class="btn ghost small" data-act="openOrganizerModal">設為主揪</button>' +
-        '<button class="btn ghost small" data-act="addPersonPrompt">＋新增團員</button></div></div>';
-      roster.forEach(p => {
-        html += '<div class="person-line"><div class="avatar small">' + avatarText(p) + '</div><span class="name">' + esc(p.name) + (p.isOrganizer ? ' 🙋🏻\u200d♂️主揪' : '') + '</span>';
-        html += '<button class="btn ghost small" data-act="editPerson" data-id="' + p.id + '" style="padding:4px 8px;">' +
-          '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button>';
-        if (p.id !== state.currentUserId) {
-          html += '<button class="btn ghost small" data-act="removePerson" data-id="' + p.id + '">✕</button>';
-        }
-        html += '</div>';
-      });
-    }
   }
   html += '</div>';
 
@@ -439,7 +451,7 @@ function renderRoomsTab() {
       if (org) html += '<div style="margin-top:6px;"><button class="btn ghost small" data-act="editRoom" data-id="' + r.id + '">編輯</button>' +
         '<button class="btn ghost small" data-act="deleteRoom" data-id="' + r.id + '">刪除</button></div>';
       if (members.length) {
-        html += '<div class="chip-grid grid-4" style="margin-top:8px;">';
+        html += '<div class="chip-grid grid-2" style="margin-top:8px;">';
         members.forEach(p => {
           html += '<div class="person-chip"><div class="avatar small">' + avatarText(p) + '</div><span class="name">' + esc(p.name) +
             (canEditPerson(p.id) ? ' <a class="x-remove" data-act="unassignRoom" data-id="' + p.id + '">✕</a>' : '') + '</span></div>';
@@ -603,10 +615,9 @@ function renderPrepTab() {
     html += '<div class="row" style="padding:8px 0;border-bottom:1px solid var(--color-divider);flex-wrap:wrap;">';
     html += '<span style="flex:1;font-size:14px;min-width:120px;">' + (isMine ? "★ " : "") + esc(it.label) + '</span>';
     if (assignees.length) {
-      assignees.forEach(p => {
-        html += '<div class="avatar small" style="margin-left:6px;">' + avatarText(p) + '</div>' +
-          '<span class="name" style="margin-left:4px;margin-right:2px;font-size:13px;">' + esc(p.name) + '</span>';
-      });
+      html += '<div style="display:flex;margin-left:6px;">';
+      assignees.forEach((p, i) => { html += '<div class="avatar small" style="margin-left:' + (i > 0 ? "-4px" : "0") + ';box-shadow:0 0 0 2px var(--color-surface, #fff);">' + avatarText(p) + '</div>'; });
+      html += '</div>';
     } else {
       html += '<span class="empty-hint" style="padding:0;margin-left:6px;">尚未分配</span>';
     }
@@ -1024,6 +1035,7 @@ function render() {
   if (state.ui.prepTaskModalFor) html += renderPrepTaskModal();
   if (state.ui.meetupGroupModalFor) html += renderMeetupGroupModal();
   if (state.ui.finalMeetupModalOpen) html += renderFinalMeetupModal();
+  if (state.ui.rosterModalOpen) html += renderRosterModal();
   if (state.ui.organizerModalOpen) html += renderOrganizerModal();
   if (state.ui.photoViewer) html += renderPhotoViewerModal();
   app.innerHTML = html;
@@ -1032,7 +1044,8 @@ function render() {
 /* -------------------------------- 事件委派 -------------------------------- */
 document.addEventListener("click", e => {
   if (e.target.classList && e.target.classList.contains("modal-backdrop")) {
-    state.ui.expenseModal = false; state.ui.arrivalModalFor = null; state.ui.arrivalMethodTemp = null; state.ui.settlementModalOpen = false; state.ui.prepTaskModalFor = null; state.ui.meetupGroupModalFor = null; state.ui.finalMeetupModalOpen = false; state.ui.organizerModalOpen = false; state.ui.photoViewer = null; render(); return;
+    if (state.ui.organizerModalOpen && state.ui.rosterModalOpen) { state.ui.organizerModalOpen = false; render(); return; }
+    state.ui.expenseModal = false; state.ui.arrivalModalFor = null; state.ui.arrivalMethodTemp = null; state.ui.settlementModalOpen = false; state.ui.prepTaskModalFor = null; state.ui.meetupGroupModalFor = null; state.ui.finalMeetupModalOpen = false; state.ui.organizerModalOpen = false; state.ui.rosterModalOpen = false; state.ui.photoViewer = null; render(); return;
   }
   const el = e.target.closest("[data-act]");
   if (!el) return;
@@ -1172,6 +1185,21 @@ document.addEventListener("click", e => {
     const name = window.prompt("姓名", p.name) ?? p.name;
     const nickname = window.prompt("簡稱（顯示在頭像上）", p.nickname || name.slice(0, 2)) ?? p.nickname;
     mutate(ev => { const pp = ev.people.find(x => x.id === id); pp.name = name; pp.nickname = nickname; });
+  } else if (act === "openRosterModal") {
+    state.ui.rosterModalOpen = true; render();
+  } else if (act === "closeRosterModal") {
+    state.ui.rosterModalOpen = false; render();
+  } else if (act === "movePerson") {
+    const dir = Number(el.dataset.dir);
+    const sheet = document.querySelector(".modal-sheet");
+    const st = sheet ? sheet.scrollTop : 0;
+    mutate(ev => {
+      const i = ev.people.findIndex(x => x.id === id), j = i + dir;
+      if (i < 0 || j < 0 || j >= ev.people.length) return;
+      const tmp = ev.people[i]; ev.people[i] = ev.people[j]; ev.people[j] = tmp;
+    });
+    const sheet2 = document.querySelector(".modal-sheet");
+    if (sheet2) sheet2.scrollTop = st;
   } else if (act === "openOrganizerModal") {
     state.ui.organizerModalOpen = true; render();
   } else if (act === "submitOrganizers") {
