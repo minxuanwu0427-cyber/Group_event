@@ -150,6 +150,7 @@ textarea.input { min-height: 80px; resize: vertical; }
 .two-col-grid .room-card { margin-bottom: 0; }
 
 .chip-grid { display: grid; gap: var(--space-2) var(--space-2); }
+.chip-grid.grid-2 { grid-template-columns: repeat(2, 1fr); }
 .chip-grid.grid-3 { grid-template-columns: repeat(3, 1fr); }
 .chip-grid.grid-4 { grid-template-columns: repeat(4, 1fr); }
 .person-chip { display: flex; align-items: center; gap: 4px; min-width: 0; }
