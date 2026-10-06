@@ -136,21 +136,15 @@ textarea.input { min-height: 80px; resize: vertical; }
 .person-line .name { flex: 1; font-size: 14px; }
 
 .room-card { background: #F4F7F1; border-radius: var(--radius-sm); padding: var(--space-3); margin-bottom: var(--space-3); }
-.room-card.full { background: var(--color-cream); }
-.room-card.mine-room { background: var(--color-cream); }
-.room-card.mine-room.full { box-shadow: inset 0 0 0 2px var(--color-cream-text); }
-.room-card.mine-room strong { color: var(--color-cream-text); }
-.room-card.mine-room .avatar { background: #FBF9F0; color: var(--color-cream-text); box-shadow: inset 0 0 0 1.5px var(--color-cream-text); }
-.room-card.mine-vehicle { background: var(--color-pink); }
-.room-card.mine-vehicle.full { background: var(--color-cream); box-shadow: inset 0 0 0 2px var(--color-pink-text); }
-.room-card.mine-vehicle strong { color: var(--color-pink-text); }
-.room-card.mine-vehicle .avatar { background: #F7FAF3; color: var(--color-pink-text); box-shadow: inset 0 0 0 1.5px var(--color-pink-text); }
+.room-card.mine-room, .room-card.mine-vehicle { background: var(--color-pink); }
+.room-card.mine-room strong, .room-card.mine-vehicle strong { color: var(--color-pink-text); }
+.room-card.mine-room .avatar, .room-card.mine-vehicle .avatar { background: #F7FAF3; color: var(--color-pink-text); box-shadow: inset 0 0 0 1.5px var(--color-pink-text); }
 
 .two-col-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
 .two-col-grid .room-card { margin-bottom: 0; }
 
 .chip-grid { display: grid; gap: var(--space-2) var(--space-2); }
-.chip-grid.grid-2 { grid-template-columns: repeat(2, 1fr); }
+.chip-grid.grid-2 { grid-template-columns: repeat(2, minmax(0, max-content)); justify-content: start; column-gap: var(--space-5); }
 .chip-grid.grid-3 { grid-template-columns: repeat(3, 1fr); }
 .chip-grid.grid-4 { grid-template-columns: repeat(4, 1fr); }
 .person-chip { display: flex; align-items: center; gap: 4px; min-width: 0; }
