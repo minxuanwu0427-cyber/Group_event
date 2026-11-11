@@ -35,7 +35,7 @@ const state = {
   eventCode: localStorage.getItem(CODE_KEY) || null,
   event: undefined,       // undefined=載入中 / null=此代號尚未建立 / object=正常資料
   currentUserId: null,
-  ui: { tab: "overview", expenseModal: false, infoEditId: null, rosterOpen: false, roomsSubTab: "room", infoSubTab: "itinerary", accommodationOpen: false, photoViewer: null, viewMode: false, arrivalModalFor: null, arrivalMethodTemp: null, arrivalsOpen: false, balancesOpen: false, unassignedRoomsOpen: false, unassignedVehiclesOpen: false, expensesOpen: false, settlementModalOpen: false, prepTaskModalFor: null, meetupOpen: false, meetupGroupModalFor: null, finalMeetupModalOpen: false, organizerModalOpen: false, rosterModalOpen: false, arrivalDraft: null }
+  ui: { tab: "overview", expenseModal: false, infoEditId: null, rosterOpen: false, roomsSubTab: "room", infoSubTab: "itinerary", accommodationOpen: false, photoViewer: null, viewMode: false, arrivalModalFor: null, arrivalMethodTemp: null, arrivalsOpen: false, balancesOpen: false, unassignedRoomsOpen: false, unassignedVehiclesOpen: false, expensesOpen: false, settlementModalOpen: false, prepTaskModalFor: null, meetupOpen: false, meetupGroupModalFor: null, finalMeetupModalOpen: false, organizerModalOpen: false, rosterModalOpen: false, arrivalDraft: null, feeListOpen: false }
 };
 
 function uid() { return "id_" + Math.random().toString(36).slice(2, 10); }
@@ -428,28 +428,28 @@ function renderOverview() {
   if (!myTasks.length) taskValue = ["未分配"];
   else taskValue = myTasks.map(it => it.label);
   html += statTile("t-mint", "📋", taskValue, "要幫忙什麼", canManage() ? "prep" : null);
-  const balances = computeBalances();
-  const settlements = computeSettlements(balances);
-  const myPay = settlements.filter(s => s.from === state.currentUserId);
-  const myReceive = settlements.filter(s => s.to === state.currentUserId);
-  let feeValue;
-  if (myPay.length) feeValue = myPay.map(s => "付" + personName(s.to) + " $" + fmtMoney(s.amount));
-  else if (myReceive.length) feeValue = myReceive.map(s => "收" + personName(s.from) + " $" + fmtMoney(s.amount));
-  else feeValue = ["已結清"];
-  html += statTile("t-blue", "💰", feeValue, "目前費用", "expense");
+  const feeItems = myFeeItems();
+  let feeValue = feeItems.length ? feeItems.map(x => x.dir + x.name + " $" + fmtMoney(x.amount)) : ["已結清"];
+  let feeExtra = "";
+  if (feeValue.length > 4) {   // 最多 4 筆，其餘按箭頭彈出完整清單
+    feeExtra = '<button type="button" class="stat-more" data-act="openFeeList">▾ 另 ' + (feeValue.length - 4) + ' 筆</button>';
+    feeValue = feeValue.slice(0, 4);
+  }
+  html += statTile("t-blue", "💰", feeValue, "目前費用", "expense", null, feeExtra);
   html += '</div>';
 
   html += '<p style="text-align:center;margin-top:16px;"><button class="btn ghost small" data-act="switchIdentity">不是你？切換身分</button></p>';
   html += '<p style="text-align:center;margin-top:4px;font-size:11px;color:var(--color-text-soft);opacity:.7;">代號 ' + esc(state.eventCode) + '</p>';
   return html;
 }
-function statTile(cls, icon, value, label, tab, subTab) {
+function statTile(cls, icon, value, label, tab, subTab, extraHtml) {
   const lines = Array.isArray(value) ? value : [value];
   const valueHtml = lines.map(esc).join("<br>");
   const fontSize = lines.length > 1 ? "14px" : "17px";
   return '<div class="stat-tile ' + cls + '"' + (tab ? ' data-act="goTab" data-tab="' + tab + '"' : '') + (subTab ? ' data-sub="' + subTab + '"' : '') + '>' +
     '<div class="stat-top"><span class="stat-icon">' + icon + '</span><span class="stat-label">' + esc(label) + '</span></div>' +
-    '<div class="stat-value" style="font-size:' + fontSize + ';line-height:1.4;">' + valueHtml + '</div>' +
+    '<div class="stat-value" style="font-size:' + fontSize + ';line-height:1.6;">' + valueHtml + '</div>' +
+    (extraHtml || '') +
     '</div>';
 }
 
@@ -1091,6 +1091,28 @@ function renderExpenseTab() {
   html += '</div>';
   return html;
 }
+function myFeeItems() {
+  const me = state.currentUserId;
+  const settlements = computeSettlements(computeBalances());
+  const pay = settlements.filter(x => x.from === me).map(x => ({ dir: "付", name: personName(x.to), amount: x.amount }));
+  if (pay.length) return pay;
+  return settlements.filter(x => x.to === me).map(x => ({ dir: "收", name: personName(x.from), amount: x.amount }));
+}
+function renderFeeListModal() {
+  const items = myFeeItems();
+  const total = items.reduce((sum, x) => sum + x.amount, 0);
+  let html = '<div class="modal-backdrop"><div class="modal-sheet">';
+  html += '<h2>我的收付明細</h2>';
+  if (items.length) html += '<p style="font-size:12.5px;color:var(--color-text-soft);margin-bottom:6px;">共 ' + items.length + ' 筆，合計 ' + items[0].dir + ' NT$ ' + fmtMoney(total) + '</p>';
+  items.forEach(x => {
+    html += '<div class="row" style="padding:8px 0;border-bottom:1px solid var(--color-divider);"><span style="font-size:14px;">' + esc(x.name) + '</span>' +
+      '<span class="exp-net ' + (x.dir === "收" ? "pos" : "neg") + '" style="font-size:15px;">' + (x.dir === "收" ? "+ " : "- ") + 'NT$ ' + fmtMoney(x.amount) + '</span></div>';
+  });
+  if (!items.length) html += '<p class="empty-hint">已結清</p>';
+  html += '<button class="btn" style="width:100%;margin-top:12px;" data-act="closeFeeList">完成</button>';
+  html += '</div></div>';
+  return html;
+}
 function renderSettlementModal() {
   const e = state.event;
   const balances = computeBalances();
@@ -1200,6 +1222,7 @@ function render() {
   if (state.ui.expenseModal) html += renderExpenseModal();
   if (state.ui.arrivalModalFor) html += renderArrivalModal();
   if (state.ui.settlementModalOpen) html += renderSettlementModal();
+  if (state.ui.feeListOpen) html += renderFeeListModal();
   if (state.ui.prepTaskModalFor) html += renderPrepTaskModal();
   if (state.ui.meetupGroupModalFor) html += renderMeetupGroupModal();
   if (state.ui.finalMeetupModalOpen) html += renderFinalMeetupModal();
@@ -1213,7 +1236,7 @@ function render() {
 document.addEventListener("click", e => {
   if (e.target.classList && e.target.classList.contains("modal-backdrop")) {
     if (state.ui.organizerModalOpen && state.ui.rosterModalOpen) { state.ui.organizerModalOpen = false; render(); return; }
-    state.ui.expenseModal = false; state.ui.arrivalModalFor = null; state.ui.arrivalMethodTemp = null; state.ui.arrivalDraft = null; state.ui.settlementModalOpen = false; state.ui.prepTaskModalFor = null; state.ui.meetupGroupModalFor = null; state.ui.finalMeetupModalOpen = false; state.ui.organizerModalOpen = false; state.ui.rosterModalOpen = false; state.ui.photoViewer = null; render(); return;
+    state.ui.expenseModal = false; state.ui.arrivalModalFor = null; state.ui.arrivalMethodTemp = null; state.ui.arrivalDraft = null; state.ui.settlementModalOpen = false; state.ui.prepTaskModalFor = null; state.ui.meetupGroupModalFor = null; state.ui.finalMeetupModalOpen = false; state.ui.organizerModalOpen = false; state.ui.rosterModalOpen = false; state.ui.feeListOpen = false; state.ui.photoViewer = null; render(); return;
   }
   const el = e.target.closest("[data-act]");
   if (!el) return;
@@ -1357,6 +1380,10 @@ document.addEventListener("click", e => {
     state.ui.rosterModalOpen = true; render();
   } else if (act === "closeRosterModal") {
     state.ui.rosterModalOpen = false; render();
+  } else if (act === "openFeeList") {
+    state.ui.feeListOpen = true; render();
+  } else if (act === "closeFeeList") {
+    state.ui.feeListOpen = false; render();
   } else if (act === "moveVehicle") {
     const dir = Number(el.dataset.dir);
     mutate(ev => {
