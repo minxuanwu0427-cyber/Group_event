@@ -1010,6 +1010,16 @@ function renderInfoTab() {
 }
 
 /* -------------------------------- 記帳 -------------------------------- */
+function expenseNetFor(ex, pid) {
+  const e = state.event;
+  const ids = e.people.map(p => p.id);
+  if (!ids.includes(ex.payerId)) return 0;   // 與 computeBalances 一致：付款人不存在就不計
+  const amount = Number(ex.amount || 0);
+  const among = (ex.splitAmong || []).filter(x => ids.includes(x));
+  const share = among.length && among.includes(pid) ? amount / among.length : 0;
+  const paid = ex.payerId === pid ? amount : 0;
+  return paid - share;   // 正：這筆我會收到；負：這筆我要付；0：與我無關（或剛好打平）
+}
 function computeBalances() {
   const e = state.event;
   const net = {};
@@ -1068,7 +1078,10 @@ function renderExpenseTab() {
     html += '<div class="row" style="padding:8px 0;border-bottom:1px solid var(--color-divider);">';
     html += '<div><div style="font-size:14px;font-weight:600;">' + esc(ex.note || "（無備註）") + '</div>';
     html += '<div style="font-size:12.5px;color:var(--color-text-soft);">' + esc(personName(ex.payerId)) + ' 付款 · ' + (ex.splitAmong || []).length + ' 人分攤</div></div>';
-    html += '<div style="text-align:right;"><div style="font-weight:700;">NT$ ' + fmtMoney(ex.amount) + '</div>';
+    const net = Math.round(expenseNetFor(ex, state.currentUserId));
+    const netText = net > 0 ? '+ NT$ ' + fmtMoney(net) : net < 0 ? '- NT$ ' + fmtMoney(-net) : 'NT$ 0';
+    html += '<div style="text-align:right;"><div class="exp-net ' + (net > 0 ? 'pos' : net < 0 ? 'neg' : 'zero') + '">' + netText + '</div>';
+    html += '<div class="exp-total">總額 NT$ ' + fmtMoney(ex.amount) + '</div>';
     if (canManage() || ex.payerId === state.currentUserId) {
       html += '<button class="btn ghost small" data-act="editExpense" data-id="' + ex.id + '">編輯</button>';
       html += '<button class="btn ghost small" data-act="deleteExpense" data-id="' + ex.id + '">刪除</button>';
