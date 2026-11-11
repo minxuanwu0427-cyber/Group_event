@@ -246,8 +246,12 @@ textarea.input { min-height: 80px; resize: vertical; }
 }
 
 /* -------- 座車路線（出發 → 各站接人 → 集合） -------- */
-.route { margin: 10px 0 2px 6px; padding-left: 14px; border-left: 2px dashed var(--color-divider); }
-.route-stop { position: relative; padding: 4px 0; font-size: 13px; line-height: 1.5; }
-.route-stop::before { content: ""; position: absolute; left: -20px; top: 11px; width: 8px; height: 8px; border-radius: 50%; background: var(--color-accent); }
+/* 圓點與虛線共用同一條中線：點 8px 置於 -21px~-13px（中心 -17px），線 2px 置於 -18px~-16px（中心 -17px） */
+.route { margin: 10px 0 2px 6px; padding-left: 22px; }
+.route-stop { position: relative; padding: 4px 0; font-size: 13px; line-height: 20px; }
+.route-stop::before { content: ""; position: absolute; z-index: 1; left: -21px; top: 10px; width: 8px; height: 8px; border-radius: 50%; background: var(--color-accent); }
+.route-stop:not(:last-child)::after { content: ""; position: absolute; left: -18px; width: 2px; top: 14px; bottom: -14px; background: repeating-linear-gradient(to bottom, #B9C9B6 0 4px, transparent 4px 8px); }
+.route-key { font-weight: 700; color: var(--color-accent-dark); }
+.route-who { color: var(--color-text-soft); font-size: 12.5px; }
 .route-pending { color: var(--color-text-soft); }
 .route-pending::before { background: var(--color-divider); }
