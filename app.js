@@ -20,7 +20,7 @@ const DEFAULT_EVENT = {
   roomAssignments: {},    // personId -> roomId
   vehicles: [],           // {id, name, capacity}
   vehicleAssignments: {}, // personId -> vehicleId
-  arrivals: {},           // personId -> { method, eta }
+  arrivals: {},           // personId -> { method, location, eta, departTime }
   prepItems: [],
   prepMemo: "",           // 主揪備忘錄，自由文字
   announcement: "",       // 頂部跑馬燈公告文字
@@ -148,7 +148,12 @@ function normalizeEvent(data) {
   e.roomAssignments = data.roomAssignments || {};
   e.vehicles = Array.isArray(data.vehicles) ? data.vehicles : [];
   e.vehicleAssignments = data.vehicleAssignments || {};
-  e.arrivals = data.arrivals || {};
+  e.arrivals = {};
+  Object.keys(data.arrivals || {}).forEach(pid => {
+    const a = Object.assign({}, data.arrivals[pid]);
+    if (a.method === "開車") a.method = "開車(駕駛)"; // 舊資料相容
+    e.arrivals[pid] = a;
+  });
   e.prepMemo = data.prepMemo || "";
   e.announcement = data.announcement || "";
   e.prepItems = Array.isArray(data.prepItems) ? data.prepItems : DEFAULT_EVENT.prepItems;
@@ -249,7 +254,12 @@ function renderMeetupCard() {
   const myId = state.currentUserId;
   const groups = e.meetupGroups || [];
   const groupsToShow = state.ui.meetupOpen ? groups : groups.filter(g => (g.memberIds || []).includes(myId));
-  const showGroupsBlock = state.ui.meetupOpen || groupsToShow.length > 0 || org;
+  // 座車連動：每台有成員的車自動成為一個集合分組（成員、停靠時間、地點都來自座車與抵達資料）
+  const carGroups = e.vehicles.map(v => {
+    return { id: v.id, title: v.name, members: vehicleMembers(v.id) };
+  }).filter(c => c.members.length);
+  const carsToShow = state.ui.meetupOpen ? carGroups : carGroups.filter(c => c.members.some(p => p.id === myId));
+  const showGroupsBlock = state.ui.meetupOpen || groupsToShow.length > 0 || carsToShow.length > 0 || org;
 
   let html = '<div class="card card-bordered">';
   html += '<div class="row" data-act="toggleMeetup" style="cursor:pointer;">' +
@@ -258,11 +268,21 @@ function renderMeetupCard() {
   if (showGroupsBlock) {
     if (org) html += '<div style="margin-top:8px;"><button class="btn ghost small" data-act="openMeetupGroupModal">＋新增分組集合</button></div>';
 
-    if (!groups.length) {
+    if (!groups.length && !carGroups.length) {
       html += '<p class="empty-hint" style="padding:8px 0;">尚未設定分組集合</p>';
-    } else if (!groupsToShow.length) {
+    } else if (!groupsToShow.length && !carsToShow.length) {
       html += '<p class="empty-hint" style="padding:8px 0;">你目前沒有被安排在任何分組</p>';
     } else {
+      carsToShow.forEach(c => {
+        html += '<div class="room-card" style="margin-top:8px;">';
+        html += '<div class="row" style="align-items:center;flex-wrap:wrap;">';
+        html += '<strong style="flex:1;">🚗 ' + esc(c.title) + '</strong>';
+        html += '<div style="display:flex;">';
+        c.members.forEach((p, i) => { html += '<div class="avatar small" style="margin-left:' + (i > 0 ? "-4px" : "0") + ';box-shadow:0 0 0 2px var(--color-surface, #fff);">' + avatarText(p) + '</div>'; });
+        html += '</div></div>';
+        html += renderVehicleRoute(c.id);
+        html += '</div>';
+      });
       groupsToShow.forEach(g => {
         const members = e.people.filter(p => (g.memberIds || []).includes(p.id));
         html += '<div class="room-card" style="margin-top:8px;">';
@@ -507,6 +527,7 @@ function renderRoomsTab() {
             (canEditPerson(p.id) ? ' <a class="x-remove" data-act="unassignVehicle" data-id="' + p.id + '">✕</a>' : '') + '</span></div>';
         });
         html += '</div>';
+        html += renderVehicleRoute(v.id);
       }
       html += '</div>';
     });
@@ -541,14 +562,81 @@ function renderRoomsTab() {
 }
 
 /* -------------------------------- 交通（併入座車內容） -------------------------------- */
-const ARRIVAL_PRESETS = ["台鐵", "高鐵", "開車", "其他"];
+const ARRIVAL_PRESETS = ["台鐵", "高鐵", "開車(駕駛)", "開車(共乘)", "其他"];
+const METHOD_DRIVER = "開車(駕駛)", METHOD_PASSENGER = "開車(共乘)";
+function vehicleMembers(vId) {
+  const e = state.event;
+  return e.people.filter(p => e.vehicleAssignments[p.id] === vId);
+}
+// 一台車的路線：出發（駕駛＋一起上車的人）→ 各站接人（依到站時間）→ 最終集合地點
+function vehicleRoute(vId) {
+  const e = state.event;
+  const arr = p => e.arrivals[p.id] || {};
+  const onboard = [], pickups = [];
+  vehicleMembers(vId).forEach(p => {
+    const a = arr(p);
+    if (a.method === METHOD_DRIVER) onboard.push(p);
+    else if (a.method === METHOD_PASSENGER && !a.eta) onboard.push(p); // 共乘且沒填時間＝跟駕駛一起出發
+    else pickups.push(p);
+  });
+  const dep = onboard.find(p => arr(p).method === METHOD_DRIVER && arr(p).departTime);
+  const stops = [], map = {}, noTime = [];
+  pickups.forEach(p => {
+    const a = arr(p);
+    if (!a.eta) { noTime.push(p); return; }
+    const key = (a.location || "").trim() + "|" + a.eta;   // 同地點同時間合併成一站
+    if (!map[key]) { map[key] = { time: a.eta, location: (a.location || "").trim(), people: [] }; stops.push(map[key]); }
+    map[key].people.push(p);
+  });
+  stops.sort((x, y) => x.time.localeCompare(y.time));
+  return { onboard, departTime: dep ? arr(dep).departTime : "", stops, noTime };
+}
+function renderVehicleRoute(vId) {
+  const e = state.event;
+  const r = vehicleRoute(vId);
+  if (!r.onboard.length && !r.stops.length && !r.noTime.length) return "";
+  const names = ps => ps.map(p => esc(p.name)).join("、");
+  let html = '<div class="route">';
+  if (r.onboard.length) html += '<div class="route-stop">🚗 <strong>出發 ' + esc(r.departTime || "未定") + '</strong>　' + names(r.onboard) + '</div>';
+  r.stops.forEach(st => {
+    html += '<div class="route-stop">📍 <strong>' + esc(st.time) + '</strong> ' + esc(st.location || "（未填地點）") + '　接 ' + names(st.people) + '</div>';
+  });
+  if (r.noTime.length) html += '<div class="route-stop route-pending">⏳ 尚未填到站時間：' + names(r.noTime) + '</div>';
+  if (e.meetup.location || e.meetup.time) {
+    html += '<div class="route-stop">🏁 <strong>' + esc(e.meetup.time || "") + '</strong> ' + esc(e.meetup.location || "最終集合地點") + '</div>';
+  }
+  html += '</div>';
+  return html;
+}
 function renderTransportSection() {
   const e = state.event;
   let html = '<div class="card card-bordered">';
   html += '<div class="row" data-act="toggleArrivals" style="cursor:pointer;">' +
     '<h2>抵達方式與時間</h2><span class="chip neutral">' + (state.ui.arrivalsOpen ? "收合" : "展開") + '</span></div>';
   html += '<div style="margin-top:8px;">';
+  const vIndex = {}; e.vehicles.forEach((v, i) => { vIndex[v.id] = i; });
+  const pIndex = {}; e.people.forEach((p, i) => { pIndex[p.id] = i; });
+  const groupOf = p => { const vid = e.vehicleAssignments[p.id]; return (vid in vIndex) ? vIndex[vid] : -1; };
+  const rankInCar = p => {
+    const a = e.arrivals[p.id] || {};
+    if (a.method === METHOD_DRIVER) return 0;
+    if (a.method === METHOD_PASSENGER && !a.eta) return 1;
+    return 2;
+  };
   const sortedPeople = e.people.slice().sort((p1, p2) => {
+    const g1 = groupOf(p1), g2 = groupOf(p2);
+    if (g1 >= 0 && g2 < 0) return -1;      // 有座車的先排，且同車的放在一起
+    if (g1 < 0 && g2 >= 0) return 1;
+    if (g1 >= 0 && g2 >= 0) {
+      if (g1 !== g2) return g1 - g2;
+      const r1 = rankInCar(p1), r2 = rankInCar(p2);
+      if (r1 !== r2) return r1 - r2;                 // 駕駛 → 一起出發 → 中途被接的人
+      if (r1 === 2) {
+        const t1 = (e.arrivals[p1.id] || {}).eta || "99:99", t2 = (e.arrivals[p2.id] || {}).eta || "99:99";
+        if (t1 !== t2) return t1.localeCompare(t2);  // 被接的人依到站時間
+      }
+      return pIndex[p1.id] - pIndex[p2.id];
+    }
     const A = e.arrivals[p1.id] || {}, B = e.arrivals[p2.id] || {};
     const aEmpty = !A.method && !A.eta, bEmpty = !B.method && !B.eta;
     if (aEmpty && !bEmpty) return 1;
@@ -559,14 +647,24 @@ function renderTransportSection() {
     return (A.eta || "").localeCompare(B.eta || "");
   });
   const peopleToShow = state.ui.arrivalsOpen ? sortedPeople : sortedPeople.filter(p => p.id === state.currentUserId);
+  let lastGroup = null;
+  const hasVehicleGroups = peopleToShow.some(p => groupOf(p) >= 0);
   peopleToShow.forEach(p => {
     const a = e.arrivals[p.id] || {};
     const editable = canEditPerson(p.id);
-    const parts = [a.method, a.location, a.eta].filter(Boolean);
+    if (state.ui.arrivalsOpen && hasVehicleGroups) {
+      const g = groupOf(p);
+      if (g !== lastGroup) {
+        lastGroup = g;
+        const label = g >= 0 ? '🚗 ' + esc(e.vehicles[g].name) : '未分配座車';
+        html += '<div style="font-size:12px;color:var(--color-text-soft);padding:8px 0 2px;">' + label + '</div>';
+      }
+    }
+    const parts = [a.method, a.location, a.departTime ? "出發 " + a.departTime : "", a.eta ? "抵達 " + a.eta : ""].filter(Boolean);
     const summary = parts.length ? parts.map(esc).join("．") : "尚未填寫";
     html += '<div class="row" ' + (editable ? 'data-act="openArrivalModal" data-id="' + p.id + '"' : '') + ' style="padding:8px 0;border-bottom:1px solid var(--color-divider);' + (editable ? 'cursor:pointer;' : '') + '">';
     html += '<div class="person-line" style="padding:0;"><div class="avatar small">' + avatarText(p) + '</div><span class="name">' + esc(p.name) + '</span></div>';
-    html += '<span class="' + (parts.length ? "" : "empty-hint") + '" style="font-size:13px;padding:0;">' + summary + '</span>';
+    html += '<span class="' + (parts.length ? "" : "empty-hint") + '" style="font-size:13px;padding:0;text-align:right;">' + summary + '</span>';
     html += '</div>';
   });
   if (!e.people.length) html += '<p class="empty-hint">尚無團員</p>';
@@ -579,7 +677,7 @@ function renderArrivalModal() {
   const p = state.event.people.find(x => x.id === pid);
   if (!p) return "";
   const a = state.event.arrivals[pid] || {};
-  const isPreset = ARRIVAL_PRESETS.slice(0, 3).includes(a.method);
+  const isPreset = ARRIVAL_PRESETS.filter(m => m !== "其他").includes(a.method);
   const currentMethod = state.ui.arrivalMethodTemp || (isPreset ? a.method : (a.method ? "其他" : "台鐵"));
   let html = '<div class="modal-backdrop"><div class="modal-sheet">';
   html += '<h2>抵達方式・' + esc(p.name) + '</h2>';
@@ -589,7 +687,15 @@ function renderArrivalModal() {
   if (currentMethod === "其他") {
     html += '<div class="form-field"><label>請輸入交通方式</label><input class="input" id="arrivalMethodOther" value="' + esc(isPreset ? "" : (a.method || "")) + '"></div>';
   }
+  if (currentMethod === METHOD_PASSENGER) {
+    html += '<p class="empty-hint" style="text-align:left;padding:0 0 6px;">跟駕駛一起從出發點上車的話，下面可以留空；要中途被接的話，填上車地點與時間</p>';
+  } else if (currentMethod !== METHOD_DRIVER) {
+    html += '<p class="empty-hint" style="text-align:left;padding:0 0 6px;">駕駛會依這個地點和時間去接你（需先在座車分配到同一台車）</p>';
+  }
   html += '<div class="form-field"><label>抵達地點（例如：烏日站）</label><input class="input" id="arrivalLocationInput" value="' + esc(a.location || "") + '"></div>';
+  if (currentMethod === METHOD_DRIVER) {
+    html += '<div class="form-field"><label>出發時間（同車的人會看到）</label><input class="input" type="time" id="arrivalDepartInput" value="' + esc(a.departTime || "") + '"></div>';
+  }
   html += '<div class="form-field"><label>預計抵達時間</label><input class="input" type="time" id="arrivalTimeInput" value="' + esc(a.eta || "") + '"></div>';
   html += '<button class="btn" style="width:100%;" data-act="submitArrival" data-id="' + pid + '">儲存</button>';
   html += '</div></div>';
@@ -1294,7 +1400,9 @@ document.addEventListener("click", e => {
     const method = methodSel === "其他" ? (otherInput ? otherInput.value.trim() : "") : methodSel;
     const location = document.getElementById("arrivalLocationInput").value.trim();
     const eta = document.getElementById("arrivalTimeInput").value;
-    mutate(ev => { ev.arrivals[id] = { method, location, eta }; });
+    const departEl = document.getElementById("arrivalDepartInput");
+    const departTime = departEl ? departEl.value : "";
+    mutate(ev => { ev.arrivals[id] = { method, location, eta, departTime }; });
     state.ui.arrivalModalFor = null; state.ui.arrivalMethodTemp = null; render();
   }
 });
