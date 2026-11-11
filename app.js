@@ -520,15 +520,18 @@ function renderRoomsTab() {
     html += '<div class="card card-bordered">';
     html += '<div class="row"><h2>座車分配</h2>' + (org ? '<button class="btn ghost small" data-act="addVehicle">＋新增座車</button>' : '') + '</div>';
     if (e.vehicles.length === 0) html += '<p class="empty-hint">尚未建立座車</p>';
-    e.vehicles.forEach(v => {
+    e.vehicles.forEach((v, vi) => {
       const members = e.people.filter(p => e.vehicleAssignments[p.id] === v.id);
       const full = v.capacity && members.length >= v.capacity;
       const mine = e.vehicleAssignments[state.currentUserId] === v.id;
       html += '<div class="room-card' + (full ? ' full' : '') + (mine ? ' mine-vehicle' : '') + '">';
       html += '<div class="row"><strong>' + esc(v.name) + '</strong>' +
         '<span class="chip' + (full ? ' warn' : ' neutral') + '">' + members.length + (v.capacity ? "/" + v.capacity : "") + ' 人</span></div>';
-      if (org) html += '<div style="margin-top:6px;"><button class="btn ghost small" data-act="editVehicle" data-id="' + v.id + '">編輯</button>' +
-        '<button class="btn ghost small" data-act="deleteVehicle" data-id="' + v.id + '">刪除</button></div>';
+      if (org) html += '<div style="margin-top:6px;display:flex;align-items:center;flex-wrap:wrap;"><button class="btn ghost small" data-act="editVehicle" data-id="' + v.id + '">編輯</button>' +
+        '<button class="btn ghost small" data-act="deleteVehicle" data-id="' + v.id + '">刪除</button>' +
+        '<span style="margin-left:auto;">' +
+        '<button class="btn ghost small" data-act="moveVehicle" data-id="' + v.id + '" data-dir="-1" style="padding:4px 10px;"' + (vi === 0 ? ' disabled' : '') + '>▲</button>' +
+        '<button class="btn ghost small" data-act="moveVehicle" data-id="' + v.id + '" data-dir="1" style="padding:4px 10px;"' + (vi === e.vehicles.length - 1 ? ' disabled' : '') + '>▼</button></span></div>';
       if (members.length) {
         html += '<div class="chip-grid grid-3" style="margin-top:8px;">';
         members.forEach(p => {
@@ -1341,6 +1344,13 @@ document.addEventListener("click", e => {
     state.ui.rosterModalOpen = true; render();
   } else if (act === "closeRosterModal") {
     state.ui.rosterModalOpen = false; render();
+  } else if (act === "moveVehicle") {
+    const dir = Number(el.dataset.dir);
+    mutate(ev => {
+      const i = ev.vehicles.findIndex(x => x.id === id), j = i + dir;
+      if (i < 0 || j < 0 || j >= ev.vehicles.length) return;
+      const tmp = ev.vehicles[i]; ev.vehicles[i] = ev.vehicles[j]; ev.vehicles[j] = tmp;
+    });
   } else if (act === "movePerson") {
     const dir = Number(el.dataset.dir);
     const sheet = document.querySelector(".modal-sheet");
