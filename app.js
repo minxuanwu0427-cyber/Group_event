@@ -2,7 +2,7 @@
    揪團懶人包 app.js (v3)
    - 用「代號」區分不同揪團，一台裝置可記住多組代號各自的身分
    - 人員完全由主揪管理（新增/命名/簡稱），一般人只能「選你是誰」
-   - 新增交通分頁（抵達方式/時間 + 座車分配）
+   - 新增交通分頁（交通方式/時間 + 座車分配）
    - 總覽改版：日期、可收折名單、彩色卡片（房間/座車/行前準備）
    ========================================================================== */
 
@@ -576,8 +576,7 @@ function vehicleRoute(vId) {
   const onboard = [], pickups = [];
   vehicleMembers(vId).forEach(p => {
     const a = arr(p);
-    if (a.method === METHOD_DRIVER) onboard.push(p);
-    else if (a.method === METHOD_PASSENGER && !a.eta) onboard.push(p); // 與駕駛一同出發且沒填時間＝跟駕駛一起出發
+    if (a.method === METHOD_DRIVER || a.method === METHOD_PASSENGER) onboard.push(p); // 駕駛與「與駕駛一同出發」的人從出發點就在車上
     else pickups.push(p);
   });
   const dep = onboard.find(p => arr(p).method === METHOD_DRIVER && arr(p).departTime);
@@ -585,9 +584,14 @@ function vehicleRoute(vId) {
   pickups.forEach(p => {
     const a = arr(p);
     if (!a.eta) { noTime.push(p); return; }
-    const key = (a.location || "").trim() + "|" + a.eta;   // 同地點同時間合併成一站
-    if (!map[key]) { map[key] = { time: a.eta, location: (a.location || "").trim(), people: [] }; stops.push(map[key]); }
-    map[key].people.push(p);
+    const loc = (a.location || "").trim();
+    // 同車、同交通方式、同地點視為一起接送；沒填地點就不合併
+    const key = loc ? (a.method || "") + "|" + loc : "none|" + p.id;
+    if (!map[key]) { map[key] = { time: a.eta, location: loc, people: [], times: {} }; stops.push(map[key]); }
+    const st = map[key];
+    st.people.push(p);
+    st.times[p.id] = a.eta;
+    if (a.eta > st.time) st.time = a.eta;   // 以最晚到站的人為準，先到的人等
   });
   stops.sort((x, y) => x.time.localeCompare(y.time));
   return { onboard, departTime: dep ? arr(dep).departTime : "", stops, noTime };
@@ -600,7 +604,9 @@ function renderVehicleRoute(vId) {
   let html = '<div class="route">';
   if (r.onboard.length) html += '<div class="route-stop">🚗 <strong>出發 ' + esc(r.departTime || "未定") + '</strong>　' + names(r.onboard) + '</div>';
   r.stops.forEach(st => {
-    html += '<div class="route-stop">📍 <strong>' + esc(st.time) + '</strong> ' + esc(st.location || "（未填地點）") + '　接 ' + names(st.people) + '</div>';
+    const differ = st.people.some(p => st.times[p.id] !== st.time);
+    const who = differ ? st.people.map(p => esc(p.name) + '(' + esc(st.times[p.id]) + ')').join("、") : names(st.people);
+    html += '<div class="route-stop">📍 <strong>' + esc(st.time) + '</strong> ' + esc(st.location || "（未填地點）") + '　接 ' + who + '</div>';
   });
   if (r.noTime.length) html += '<div class="route-stop route-pending">⏳ 尚未填到站時間：' + names(r.noTime) + '</div>';
   if (e.meetup.location || e.meetup.time) {
@@ -613,7 +619,7 @@ function renderTransportSection() {
   const e = state.event;
   let html = '<div class="card card-bordered">';
   html += '<div class="row" data-act="toggleArrivals" style="cursor:pointer;">' +
-    '<h2>抵達方式與時間</h2><span class="chip neutral">' + (state.ui.arrivalsOpen ? "收合" : "展開") + '</span></div>';
+    '<h2>交通方式與時間</h2><span class="chip neutral">' + (state.ui.arrivalsOpen ? "收合" : "展開") + '</span></div>';
   html += '<div style="margin-top:8px;">';
   const vIndex = {}; e.vehicles.forEach((v, i) => { vIndex[v.id] = i; });
   const pIndex = {}; e.people.forEach((p, i) => { pIndex[p.id] = i; });
@@ -621,9 +627,15 @@ function renderTransportSection() {
   const rankInCar = p => {
     const a = e.arrivals[p.id] || {};
     if (a.method === METHOD_DRIVER) return 0;
-    if (a.method === METHOD_PASSENGER && !a.eta) return 1;
+    if (a.method === METHOD_PASSENGER) return 1;
     return 2;
   };
+  const stopOrder = {};
+  e.vehicles.forEach(v => {
+    const r = vehicleRoute(v.id);
+    r.stops.forEach((st, i) => st.people.forEach(p => { stopOrder[p.id] = i; }));
+    r.noTime.forEach(p => { stopOrder[p.id] = 999; });
+  });
   const sortedPeople = e.people.slice().sort((p1, p2) => {
     const g1 = groupOf(p1), g2 = groupOf(p2);
     if (g1 >= 0 && g2 < 0) return -1;      // 有座車的先排，且同車的放在一起
@@ -633,8 +645,10 @@ function renderTransportSection() {
       const r1 = rankInCar(p1), r2 = rankInCar(p2);
       if (r1 !== r2) return r1 - r2;                 // 駕駛 → 一起出發 → 中途被接的人
       if (r1 === 2) {
+        const o1 = stopOrder[p1.id], o2 = stopOrder[p2.id];
+        if (o1 !== o2) return o1 - o2;               // 依路線站序，同一站的人排在一起
         const t1 = (e.arrivals[p1.id] || {}).eta || "99:99", t2 = (e.arrivals[p2.id] || {}).eta || "99:99";
-        if (t1 !== t2) return t1.localeCompare(t2);  // 被接的人依到站時間
+        if (t1 !== t2) return t1.localeCompare(t2);
       }
       return pIndex[p1.id] - pIndex[p2.id];
     }
@@ -661,7 +675,9 @@ function renderTransportSection() {
         html += '<div style="font-size:12px;color:var(--color-text-soft);padding:8px 0 2px;">' + label + '</div>';
       }
     }
-    const parts = [a.method, a.location, a.departTime ? "出發 " + a.departTime : "", (a.eta && a.method !== METHOD_DRIVER) ? "抵達 " + a.eta : ""].filter(Boolean);
+    const parts = (a.method === METHOD_DRIVER ? [a.method, a.departTime ? "出發 " + a.departTime : ""]
+      : a.method === METHOD_PASSENGER ? [a.method]
+      : [a.method, a.location, a.eta ? "到站 " + a.eta : ""]).filter(Boolean);
     const summary = parts.length ? parts.map(esc).join("．") : "尚未填寫";
     html += '<div class="row" ' + (editable ? 'data-act="openArrivalModal" data-id="' + p.id + '"' : '') + ' style="padding:8px 0;border-bottom:1px solid var(--color-divider);' + (editable ? 'cursor:pointer;' : '') + '">';
     html += '<div class="person-line" style="padding:0;"><div class="avatar small">' + avatarText(p) + '</div><span class="name">' + esc(p.name) + '</span></div>';
@@ -701,23 +717,21 @@ function renderArrivalModal() {
     '<input class="input" type="time" id="' + id + '" value="' + esc(val(key, saved)) + '" style="flex:1;min-width:0;">' +
     '<button type="button" class="btn ghost small" data-act="clearArrivalField" data-field="' + field + '">清除</button></div></div>';
   let html = '<div class="modal-backdrop"><div class="modal-sheet">';
-  html += '<h2>抵達方式・' + esc(p.name) + '</h2>';
+  html += '<h2>交通方式・' + esc(p.name) + '</h2>';
   html += '<div class="form-field"><label>交通方式</label><select class="input" id="arrivalMethodSelect" data-act="arrivalMethodChange">';
   ARRIVAL_PRESETS.forEach(m => { html += '<option value="' + m + '"' + (currentMethod === m ? " selected" : "") + '>' + m + '</option>'; });
   html += '</select></div>';
   if (currentMethod === "其他") {
     html += '<div class="form-field"><label>請輸入交通方式</label><input class="input" id="arrivalMethodOther" value="' + esc(val("other", isPreset ? "" : (a.method || ""))) + '"></div>';
   }
-  if (currentMethod === METHOD_PASSENGER) {
-    html += '<p class="empty-hint" style="text-align:left;padding:0 0 6px;">和駕駛一同出發的話，下面可以留空；要中途被接的話，填上車地點與時間</p>';
-  } else if (currentMethod !== METHOD_DRIVER) {
-    html += '<p class="empty-hint" style="text-align:left;padding:0 0 6px;">駕駛會依這個地點和時間去接你（需先在座車分配到同一台車）</p>';
-  }
-  html += '<div class="form-field"><label>抵達地點（例如：烏日站）</label><input class="input" id="arrivalLocationInput" value="' + esc(val("location", a.location)) + '"></div>';
   if (currentMethod === METHOD_DRIVER) {
     html += timeField("出發時間（同車的人會看到）", "arrivalDepartInput", "departTime", a.departTime, "departTime");
+  } else if (currentMethod === METHOD_PASSENGER) {
+    html += '<p class="empty-hint" style="text-align:left;padding:0 0 6px;">會和駕駛一起從出發點出發，不需要填其他項目</p>';
   } else {
-    html += timeField("預計抵達時間", "arrivalTimeInput", "eta", a.eta, "eta"); // 駕駛不需要抵達時間
+    html += '<p class="empty-hint" style="text-align:left;padding:0 0 6px;">駕駛會依這個地點和時間去接你（需先在座車分配到同一台車）</p>';
+    html += '<div class="form-field"><label>到站地點（例如：烏日站）</label><input class="input" id="arrivalLocationInput" value="' + esc(val("location", a.location)) + '"></div>';
+    html += timeField("預計到站時間", "arrivalTimeInput", "eta", a.eta, "eta");
   }
   html += '<button class="btn" style="width:100%;" data-act="submitArrival" data-id="' + pid + '">儲存</button>';
   html += '</div></div>';
@@ -1424,9 +1438,10 @@ document.addEventListener("click", e => {
     const methodSel = document.getElementById("arrivalMethodSelect").value;
     const otherInput = document.getElementById("arrivalMethodOther");
     const method = methodSel === "其他" ? (otherInput ? otherInput.value.trim() : "") : methodSel;
-    const location = document.getElementById("arrivalLocationInput").value.trim();
+    const locEl = document.getElementById("arrivalLocationInput");
+    const location = locEl ? locEl.value.trim() : "";
     const etaEl = document.getElementById("arrivalTimeInput");
-    const eta = etaEl ? etaEl.value : "";   // 駕駛沒有抵達時間欄位
+    const eta = etaEl ? etaEl.value : "";   // 駕駛、與駕駛一同出發沒有這些欄位
     const departEl = document.getElementById("arrivalDepartInput");
     const departTime = departEl ? departEl.value : "";
     mutate(ev => { ev.arrivals[id] = { method, location, eta, departTime }; });
