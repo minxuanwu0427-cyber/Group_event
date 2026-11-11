@@ -18,9 +18,9 @@ const DEFAULT_EVENT = {
   people: [],            // {id, name, nickname, isOrganizer}
   rooms: [],              // {id, name, capacity}
   roomAssignments: {},    // personId -> roomId
-  vehicles: [],           // {id, name, capacity}
+  vehicles: [],           // {id, name, capacity, nextStop}  nextStop＝接完人後先去的中繼點（採買、加油等），由主揪設定
   vehicleAssignments: {}, // personId -> vehicleId
-  arrivals: {},           // personId -> { method, location, eta, departTime, nextStop }
+  arrivals: {},           // personId -> { method, location, eta, departTime }
   prepItems: [],
   prepMemo: "",           // 主揪備忘錄，自由文字
   announcement: "",       // 頂部跑馬燈公告文字
@@ -155,6 +155,12 @@ function normalizeEvent(data) {
     if (a.method === "開車(共乘)") a.method = "開車(與駕駛一同出發)";
     e.arrivals[pid] = a;
   });
+  e.vehicles = e.vehicles.map(v => {
+    if (v.nextStop !== undefined) return v;
+    const driverId = Object.keys(e.vehicleAssignments).find(pid => e.vehicleAssignments[pid] === v.id && e.arrivals[pid] && e.arrivals[pid].nextStop);
+    return Object.assign({}, v, { nextStop: driverId ? e.arrivals[driverId].nextStop : "" });
+  });
+  Object.keys(e.arrivals).forEach(pid => { delete e.arrivals[pid].nextStop; });
   e.prepMemo = data.prepMemo || "";
   e.announcement = data.announcement || "";
   e.prepItems = Array.isArray(data.prepItems) ? data.prepItems : DEFAULT_EVENT.prepItems;
@@ -255,22 +261,20 @@ function renderMeetupCard() {
   const myId = state.currentUserId;
   const groups = e.meetupGroups || [];
   const groupsToShow = state.ui.meetupOpen ? groups : groups.filter(g => (g.memberIds || []).includes(myId));
-  // 座車連動：每台有成員的車自動成為一個集合分組（成員、停靠時間、地點都來自座車與抵達資料）
+  // 座車連動：每台有成員的車自動成為一個集合分組（成員與路線都來自座車與交通資料）
   const carGroups = e.vehicles.map(v => {
     return { id: v.id, title: v.name, members: vehicleMembers(v.id) };
   }).filter(c => c.members.length);
   const carsToShow = state.ui.meetupOpen ? carGroups : carGroups.filter(c => c.members.some(p => p.id === myId));
-  const showGroupsBlock = state.ui.meetupOpen || groupsToShow.length > 0 || carsToShow.length > 0 || org;
+  const showGroupsBlock = state.ui.meetupOpen || groupsToShow.length > 0 || carsToShow.length > 0;
 
   let html = '<div class="card card-bordered">';
   html += '<div class="row" data-act="toggleMeetup" style="cursor:pointer;">' +
     '<h2>集合資訊</h2><span class="chip neutral">' + (state.ui.meetupOpen ? "收合" : "展開") + '</span></div>';
 
   if (showGroupsBlock) {
-    if (org) html += '<div style="margin-top:8px;"><button class="btn ghost small" data-act="openMeetupGroupModal">＋新增分組集合</button></div>';
-
     if (!groups.length && !carGroups.length) {
-      html += '<p class="empty-hint" style="padding:8px 0;">尚未設定分組集合</p>';
+      html += '<p class="empty-hint" style="padding:8px 0;">尚未分配座車</p>';
     } else if (!groupsToShow.length && !carsToShow.length) {
       html += '<p class="empty-hint" style="padding:8px 0;">你目前沒有被安排在任何分組</p>';
     } else {
@@ -282,6 +286,10 @@ function renderMeetupCard() {
         c.members.forEach((p, i) => { html += '<div class="avatar small" style="margin-left:' + (i > 0 ? "-4px" : "0") + ';box-shadow:0 0 0 2px var(--color-surface, #fff);">' + avatarText(p) + '</div>'; });
         html += '</div></div>';
         html += renderVehicleRoute(c.id);
+        if (org) {
+          const cur = (e.vehicles.find(x => x.id === c.id) || {}).nextStop;
+          html += '<div style="margin-top:6px;"><button class="btn ghost small" data-act="editVehicleNextStop" data-id="' + c.id + '">' + (cur ? "編輯中繼點" : "＋設定中繼點") + '</button></div>';
+        }
         html += '</div>';
       });
       groupsToShow.forEach(g => {
@@ -579,7 +587,7 @@ function vehicleRoute(vId) {
     else pickups.push(p);
   });
   const dep = onboard.find(p => arr(p).method === METHOD_DRIVER && arr(p).departTime);
-  const nx = onboard.find(p => arr(p).method === METHOD_DRIVER && arr(p).nextStop);
+  const veh = e.vehicles.find(x => x.id === vId);
   const stops = [], map = {}, noTime = [];
   pickups.forEach(p => {
     const a = arr(p);
@@ -587,31 +595,32 @@ function vehicleRoute(vId) {
     const loc = (a.location || "").trim();
     // 同車、同交通方式、同地點視為一起接送；沒填地點就不合併
     const key = loc ? (a.method || "") + "|" + loc : "none|" + p.id;
-    if (!map[key]) { map[key] = { time: a.eta, location: loc, people: [], times: {} }; stops.push(map[key]); }
+    if (!map[key]) { map[key] = { time: a.eta, location: loc, method: a.method || "", people: [], times: {} }; stops.push(map[key]); }
     const st = map[key];
     st.people.push(p);
     st.times[p.id] = a.eta;
     if (a.eta > st.time) st.time = a.eta;   // 以最晚到站的人為準，先到的人等
   });
   stops.sort((x, y) => x.time.localeCompare(y.time));
-  return { onboard, departTime: dep ? arr(dep).departTime : "", nextStop: nx ? arr(nx).nextStop : "", stops, noTime };
+  return { onboard, departTime: dep ? arr(dep).departTime : "", nextStop: (veh && veh.nextStop) || "", stops, noTime };
 }
 function renderVehicleRoute(vId) {
   const e = state.event;
   const r = vehicleRoute(vId);
-  if (!r.onboard.length && !r.stops.length && !r.noTime.length) return "";   // 沒有接送的人時，就只有「出發 → 採買 → 最終集合」
+  if (!r.onboard.length && !r.stops.length && !r.noTime.length) return "";   // 沒有接送的人時，就只有「出發 → 中繼點 → 最終集合」
   const names = ps => ps.map(p => esc(p.name)).join("、");
+  const key = t => '<span class="route-key">' + t + '</span>';   // 時間與地點：粗體墨綠
   let html = '<div class="route">';
-  if (r.onboard.length) html += '<div class="route-stop">🚗 <strong>出發 ' + esc(r.departTime || "未定") + '</strong>　' + names(r.onboard) + '</div>';
+  if (r.onboard.length) html += '<div class="route-stop">' + key('出發 ' + esc(r.departTime || "未定")) + '</div>';
   r.stops.forEach(st => {
-    const differ = st.people.some(p => st.times[p.id] !== st.time);
-    const who = differ ? st.people.map(p => esc(p.name) + '(' + esc(st.times[p.id]) + ')').join("、") : names(st.people);
-    html += '<div class="route-stop">📍 <strong>' + esc(st.time) + '</strong> ' + esc(st.location || "（未填地點）") + '　接 ' + who + '</div>';
+    // 地點連同交通方式一起顯示（台鐵烏日站／高鐵台中站），避免搞混；地點裡已經有的就不重複加
+    const place = st.location ? (st.method && !st.location.includes(st.method) ? st.method + st.location : st.location) : (st.method || "") + "（未填地點）";
+    html += '<div class="route-stop">' + key(esc(st.time) + ' ' + esc(place)) + '<span class="route-who">　接 ' + names(st.people) + '</span></div>';
   });
-  if (r.noTime.length) html += '<div class="route-stop route-pending">⏳ 尚未填到站時間：' + names(r.noTime) + '</div>';
-  if (r.nextStop) html += '<div class="route-stop">🛒 ' + esc(r.nextStop) + '</div>';   // 這台車接完人後先去的地方，不等於最終集合地點
+  if (r.noTime.length) html += '<div class="route-stop route-pending">尚未填到站時間：' + names(r.noTime) + '</div>';
+  if (r.nextStop) html += '<div class="route-stop">' + key(esc(r.nextStop)) + '</div>';   // 這台車接完人後先去的中繼點，不等於最終集合地點
   if (e.meetup.location || e.meetup.time) {
-    html += '<div class="route-stop">🏁 <strong>' + esc(e.meetup.time || "") + '</strong> ' + esc(e.meetup.location || "最終集合地點") + '</div>';
+    html += '<div class="route-stop">' + key(esc((e.meetup.time ? e.meetup.time + " " : "") + (e.meetup.location || "最終集合地點"))) + '</div>';
   }
   html += '</div>';
   return html;
@@ -676,7 +685,7 @@ function renderTransportSection() {
         html += '<div style="font-size:12px;color:var(--color-text-soft);padding:8px 0 2px;">' + label + '</div>';
       }
     }
-    const parts = (a.method === METHOD_DRIVER ? [a.method, a.departTime ? "出發 " + a.departTime : "", a.nextStop ? "下一站 " + a.nextStop : ""]
+    const parts = (a.method === METHOD_DRIVER ? [a.method, a.departTime ? "出發 " + a.departTime : ""]
       : a.method === METHOD_PASSENGER ? [a.method]
       : [a.method, a.location, a.eta ? "到站 " + a.eta : ""]).filter(Boolean);
     const summary = parts.length ? parts.map(esc).join("．") : "尚未填寫";
@@ -693,14 +702,14 @@ function renderTransportSection() {
 // 抵達方式視窗：即時記住欄位內容（含清空），重繪時不會被舊資料蓋回去
 function captureArrivalDraft() {
   const d = Object.assign({}, state.ui.arrivalDraft || {});
-  [["location", "arrivalLocationInput"], ["eta", "arrivalTimeInput"], ["departTime", "arrivalDepartInput"], ["nextStop", "arrivalNextStopInput"], ["other", "arrivalMethodOther"]].forEach(pair => {
+  [["location", "arrivalLocationInput"], ["eta", "arrivalTimeInput"], ["departTime", "arrivalDepartInput"], ["other", "arrivalMethodOther"]].forEach(pair => {
     const el = document.getElementById(pair[1]);
     if (el) d[pair[0]] = el.value;
   });
   state.ui.arrivalDraft = d;
 }
 function onArrivalFieldEvent(ev) {
-  if (state.ui.arrivalModalFor && /^(arrivalLocationInput|arrivalTimeInput|arrivalDepartInput|arrivalNextStopInput|arrivalMethodOther)$/.test(ev.target.id || "")) captureArrivalDraft();
+  if (state.ui.arrivalModalFor && /^(arrivalLocationInput|arrivalTimeInput|arrivalDepartInput|arrivalMethodOther)$/.test(ev.target.id || "")) captureArrivalDraft();
 }
 document.addEventListener("input", onArrivalFieldEvent);
 document.addEventListener("change", onArrivalFieldEvent);
@@ -727,7 +736,6 @@ function renderArrivalModal() {
   }
   if (currentMethod === METHOD_DRIVER) {
     html += timeField("出發時間（同車的人會看到）", "arrivalDepartInput", "departTime", a.departTime, "departTime");
-    html += '<div class="form-field"><label>接完人後先去的地點（例如：採買，沒有可留空）</label><input class="input" id="arrivalNextStopInput" value="' + esc(val("nextStop", a.nextStop)) + '"></div>';
   } else if (currentMethod === METHOD_PASSENGER) {
     html += '<p class="empty-hint" style="text-align:left;padding:0 0 6px;">會和駕駛一起從出發點出發，不需要填其他項目</p>';
   } else {
@@ -1432,6 +1440,11 @@ document.addEventListener("click", e => {
     mutate(ev => { ev.expenses = ev.expenses.filter(x => x.id !== id); });
   } else if (act === "openArrivalModal") {
     state.ui.arrivalModalFor = id; state.ui.arrivalMethodTemp = null; state.ui.arrivalDraft = null; render();
+  } else if (act === "editVehicleNextStop") {
+    const v = state.event.vehicles.find(x => x.id === id); if (!v) return;
+    const input = window.prompt("這台車接完人後要先去哪個中繼點？（例如：採買、加油。留空代表清除）", v.nextStop || "");
+    if (input === null) return;
+    mutate(ev => { const vv = ev.vehicles.find(x => x.id === id); if (vv) vv.nextStop = input.trim(); });
   } else if (act === "clearArrivalField") {
     captureArrivalDraft();
     state.ui.arrivalDraft[el.dataset.field] = "";
@@ -1446,9 +1459,7 @@ document.addEventListener("click", e => {
     const eta = etaEl ? etaEl.value : "";   // 駕駛、與駕駛一同出發沒有這些欄位
     const departEl = document.getElementById("arrivalDepartInput");
     const departTime = departEl ? departEl.value : "";
-    const nextEl = document.getElementById("arrivalNextStopInput");
-    const nextStop = nextEl ? nextEl.value.trim() : "";
-    mutate(ev => { ev.arrivals[id] = { method, location, eta, departTime, nextStop }; });
+    mutate(ev => { ev.arrivals[id] = { method, location, eta, departTime }; });
     state.ui.arrivalModalFor = null; state.ui.arrivalMethodTemp = null; state.ui.arrivalDraft = null; render();
   }
 });
