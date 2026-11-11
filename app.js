@@ -35,7 +35,7 @@ const state = {
   eventCode: localStorage.getItem(CODE_KEY) || null,
   event: undefined,       // undefined=載入中 / null=此代號尚未建立 / object=正常資料
   currentUserId: null,
-  ui: { tab: "overview", expenseModal: false, infoEditId: null, rosterOpen: false, roomsSubTab: "room", infoSubTab: "itinerary", accommodationOpen: false, photoViewer: null, viewMode: false, arrivalModalFor: null, arrivalMethodTemp: null, arrivalsOpen: false, balancesOpen: false, unassignedRoomsOpen: false, unassignedVehiclesOpen: false, expensesOpen: false, settlementModalOpen: false, prepTaskModalFor: null, meetupOpen: false, meetupGroupModalFor: null, finalMeetupModalOpen: false, organizerModalOpen: false, rosterModalOpen: false }
+  ui: { tab: "overview", expenseModal: false, infoEditId: null, rosterOpen: false, roomsSubTab: "room", infoSubTab: "itinerary", accommodationOpen: false, photoViewer: null, viewMode: false, arrivalModalFor: null, arrivalMethodTemp: null, arrivalsOpen: false, balancesOpen: false, unassignedRoomsOpen: false, unassignedVehiclesOpen: false, expensesOpen: false, settlementModalOpen: false, prepTaskModalFor: null, meetupOpen: false, meetupGroupModalFor: null, finalMeetupModalOpen: false, organizerModalOpen: false, rosterModalOpen: false, arrivalDraft: null }
 };
 
 function uid() { return "id_" + Math.random().toString(36).slice(2, 10); }
@@ -152,6 +152,7 @@ function normalizeEvent(data) {
   Object.keys(data.arrivals || {}).forEach(pid => {
     const a = Object.assign({}, data.arrivals[pid]);
     if (a.method === "開車") a.method = "開車(駕駛)"; // 舊資料相容
+    if (a.method === "開車(共乘)") a.method = "開車(與駕駛一同出發)";
     e.arrivals[pid] = a;
   });
   e.prepMemo = data.prepMemo || "";
@@ -562,8 +563,8 @@ function renderRoomsTab() {
 }
 
 /* -------------------------------- 交通（併入座車內容） -------------------------------- */
-const ARRIVAL_PRESETS = ["台鐵", "高鐵", "開車(駕駛)", "開車(共乘)", "其他"];
-const METHOD_DRIVER = "開車(駕駛)", METHOD_PASSENGER = "開車(共乘)";
+const ARRIVAL_PRESETS = ["台鐵", "高鐵", "開車(駕駛)", "開車(與駕駛一同出發)", "其他"];
+const METHOD_DRIVER = "開車(駕駛)", METHOD_PASSENGER = "開車(與駕駛一同出發)";
 function vehicleMembers(vId) {
   const e = state.event;
   return e.people.filter(p => e.vehicleAssignments[p.id] === vId);
@@ -576,7 +577,7 @@ function vehicleRoute(vId) {
   vehicleMembers(vId).forEach(p => {
     const a = arr(p);
     if (a.method === METHOD_DRIVER) onboard.push(p);
-    else if (a.method === METHOD_PASSENGER && !a.eta) onboard.push(p); // 共乘且沒填時間＝跟駕駛一起出發
+    else if (a.method === METHOD_PASSENGER && !a.eta) onboard.push(p); // 與駕駛一同出發且沒填時間＝跟駕駛一起出發
     else pickups.push(p);
   });
   const dep = onboard.find(p => arr(p).method === METHOD_DRIVER && arr(p).departTime);
@@ -660,7 +661,7 @@ function renderTransportSection() {
         html += '<div style="font-size:12px;color:var(--color-text-soft);padding:8px 0 2px;">' + label + '</div>';
       }
     }
-    const parts = [a.method, a.location, a.departTime ? "出發 " + a.departTime : "", a.eta ? "抵達 " + a.eta : ""].filter(Boolean);
+    const parts = [a.method, a.location, a.departTime ? "出發 " + a.departTime : "", (a.eta && a.method !== METHOD_DRIVER) ? "抵達 " + a.eta : ""].filter(Boolean);
     const summary = parts.length ? parts.map(esc).join("．") : "尚未填寫";
     html += '<div class="row" ' + (editable ? 'data-act="openArrivalModal" data-id="' + p.id + '"' : '') + ' style="padding:8px 0;border-bottom:1px solid var(--color-divider);' + (editable ? 'cursor:pointer;' : '') + '">';
     html += '<div class="person-line" style="padding:0;"><div class="avatar small">' + avatarText(p) + '</div><span class="name">' + esc(p.name) + '</span></div>';
@@ -672,6 +673,20 @@ function renderTransportSection() {
   html += '</div>';
   return html;
 }
+// 抵達方式視窗：即時記住欄位內容（含清空），重繪時不會被舊資料蓋回去
+function captureArrivalDraft() {
+  const d = Object.assign({}, state.ui.arrivalDraft || {});
+  [["location", "arrivalLocationInput"], ["eta", "arrivalTimeInput"], ["departTime", "arrivalDepartInput"], ["other", "arrivalMethodOther"]].forEach(pair => {
+    const el = document.getElementById(pair[1]);
+    if (el) d[pair[0]] = el.value;
+  });
+  state.ui.arrivalDraft = d;
+}
+function onArrivalFieldEvent(ev) {
+  if (state.ui.arrivalModalFor && /^(arrivalLocationInput|arrivalTimeInput|arrivalDepartInput|arrivalMethodOther)$/.test(ev.target.id || "")) captureArrivalDraft();
+}
+document.addEventListener("input", onArrivalFieldEvent);
+document.addEventListener("change", onArrivalFieldEvent);
 function renderArrivalModal() {
   const pid = state.ui.arrivalModalFor;
   const p = state.event.people.find(x => x.id === pid);
@@ -679,24 +694,31 @@ function renderArrivalModal() {
   const a = state.event.arrivals[pid] || {};
   const isPreset = ARRIVAL_PRESETS.filter(m => m !== "其他").includes(a.method);
   const currentMethod = state.ui.arrivalMethodTemp || (isPreset ? a.method : (a.method ? "其他" : "台鐵"));
+  const draft = state.ui.arrivalDraft || {};
+  const val = (k, fallback) => draft[k] !== undefined ? draft[k] : (fallback || "");
+  const timeField = (label, id, key, saved, field) =>
+    '<div class="form-field"><label>' + label + '</label><div style="display:flex;gap:8px;align-items:center;">' +
+    '<input class="input" type="time" id="' + id + '" value="' + esc(val(key, saved)) + '" style="flex:1;min-width:0;">' +
+    '<button type="button" class="btn ghost small" data-act="clearArrivalField" data-field="' + field + '">清除</button></div></div>';
   let html = '<div class="modal-backdrop"><div class="modal-sheet">';
   html += '<h2>抵達方式・' + esc(p.name) + '</h2>';
   html += '<div class="form-field"><label>交通方式</label><select class="input" id="arrivalMethodSelect" data-act="arrivalMethodChange">';
   ARRIVAL_PRESETS.forEach(m => { html += '<option value="' + m + '"' + (currentMethod === m ? " selected" : "") + '>' + m + '</option>'; });
   html += '</select></div>';
   if (currentMethod === "其他") {
-    html += '<div class="form-field"><label>請輸入交通方式</label><input class="input" id="arrivalMethodOther" value="' + esc(isPreset ? "" : (a.method || "")) + '"></div>';
+    html += '<div class="form-field"><label>請輸入交通方式</label><input class="input" id="arrivalMethodOther" value="' + esc(val("other", isPreset ? "" : (a.method || ""))) + '"></div>';
   }
   if (currentMethod === METHOD_PASSENGER) {
-    html += '<p class="empty-hint" style="text-align:left;padding:0 0 6px;">跟駕駛一起從出發點上車的話，下面可以留空；要中途被接的話，填上車地點與時間</p>';
+    html += '<p class="empty-hint" style="text-align:left;padding:0 0 6px;">和駕駛一同出發的話，下面可以留空；要中途被接的話，填上車地點與時間</p>';
   } else if (currentMethod !== METHOD_DRIVER) {
     html += '<p class="empty-hint" style="text-align:left;padding:0 0 6px;">駕駛會依這個地點和時間去接你（需先在座車分配到同一台車）</p>';
   }
-  html += '<div class="form-field"><label>抵達地點（例如：烏日站）</label><input class="input" id="arrivalLocationInput" value="' + esc(a.location || "") + '"></div>';
+  html += '<div class="form-field"><label>抵達地點（例如：烏日站）</label><input class="input" id="arrivalLocationInput" value="' + esc(val("location", a.location)) + '"></div>';
   if (currentMethod === METHOD_DRIVER) {
-    html += '<div class="form-field"><label>出發時間（同車的人會看到）</label><input class="input" type="time" id="arrivalDepartInput" value="' + esc(a.departTime || "") + '"></div>';
+    html += timeField("出發時間（同車的人會看到）", "arrivalDepartInput", "departTime", a.departTime, "departTime");
+  } else {
+    html += timeField("預計抵達時間", "arrivalTimeInput", "eta", a.eta, "eta"); // 駕駛不需要抵達時間
   }
-  html += '<div class="form-field"><label>預計抵達時間</label><input class="input" type="time" id="arrivalTimeInput" value="' + esc(a.eta || "") + '"></div>';
   html += '<button class="btn" style="width:100%;" data-act="submitArrival" data-id="' + pid + '">儲存</button>';
   html += '</div></div>';
   return html;
@@ -1151,7 +1173,7 @@ function render() {
 document.addEventListener("click", e => {
   if (e.target.classList && e.target.classList.contains("modal-backdrop")) {
     if (state.ui.organizerModalOpen && state.ui.rosterModalOpen) { state.ui.organizerModalOpen = false; render(); return; }
-    state.ui.expenseModal = false; state.ui.arrivalModalFor = null; state.ui.arrivalMethodTemp = null; state.ui.settlementModalOpen = false; state.ui.prepTaskModalFor = null; state.ui.meetupGroupModalFor = null; state.ui.finalMeetupModalOpen = false; state.ui.organizerModalOpen = false; state.ui.rosterModalOpen = false; state.ui.photoViewer = null; render(); return;
+    state.ui.expenseModal = false; state.ui.arrivalModalFor = null; state.ui.arrivalMethodTemp = null; state.ui.arrivalDraft = null; state.ui.settlementModalOpen = false; state.ui.prepTaskModalFor = null; state.ui.meetupGroupModalFor = null; state.ui.finalMeetupModalOpen = false; state.ui.organizerModalOpen = false; state.ui.rosterModalOpen = false; state.ui.photoViewer = null; render(); return;
   }
   const el = e.target.closest("[data-act]");
   if (!el) return;
@@ -1393,17 +1415,22 @@ document.addEventListener("click", e => {
   } else if (act === "deleteExpense") {
     mutate(ev => { ev.expenses = ev.expenses.filter(x => x.id !== id); });
   } else if (act === "openArrivalModal") {
-    state.ui.arrivalModalFor = id; state.ui.arrivalMethodTemp = null; render();
+    state.ui.arrivalModalFor = id; state.ui.arrivalMethodTemp = null; state.ui.arrivalDraft = null; render();
+  } else if (act === "clearArrivalField") {
+    captureArrivalDraft();
+    state.ui.arrivalDraft[el.dataset.field] = "";
+    render();   // 重建欄位，確實變成空白
   } else if (act === "submitArrival") {
     const methodSel = document.getElementById("arrivalMethodSelect").value;
     const otherInput = document.getElementById("arrivalMethodOther");
     const method = methodSel === "其他" ? (otherInput ? otherInput.value.trim() : "") : methodSel;
     const location = document.getElementById("arrivalLocationInput").value.trim();
-    const eta = document.getElementById("arrivalTimeInput").value;
+    const etaEl = document.getElementById("arrivalTimeInput");
+    const eta = etaEl ? etaEl.value : "";   // 駕駛沒有抵達時間欄位
     const departEl = document.getElementById("arrivalDepartInput");
     const departTime = departEl ? departEl.value : "";
     mutate(ev => { ev.arrivals[id] = { method, location, eta, departTime }; });
-    state.ui.arrivalModalFor = null; state.ui.arrivalMethodTemp = null; render();
+    state.ui.arrivalModalFor = null; state.ui.arrivalMethodTemp = null; state.ui.arrivalDraft = null; render();
   }
 });
 
@@ -1418,6 +1445,7 @@ document.addEventListener("change", e => {
     const vehicleId = el.value;
     mutate(ev => { if (vehicleId) ev.vehicleAssignments[id] = vehicleId; else delete ev.vehicleAssignments[id]; });
   } else if (act === "arrivalMethodChange") {
+    captureArrivalDraft();
     state.ui.arrivalMethodTemp = el.value; render();
   }
 });
